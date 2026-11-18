@@ -138,6 +138,7 @@ public class MainActivity extends Activity {
             ui.postDelayed(this::launchNav, 500);
         }
         wasStopped = false;
+        if (prefs().getBoolean("hide_bar", true)) immersive();
         startSlideshow();
     }
 
@@ -154,9 +155,17 @@ public class MainActivity extends Activity {
         ui.removeCallbacks(syncTick);
     }
 
+    private void immersive() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+    }
+
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && prefs().getBoolean("hide_bar", true)) immersive();
         if (hasFocus && drawer == null && dlgOpen == 0 && freeformOn() && prefs().getBoolean("auto_nav", true)
                 && System.currentTimeMillis() - lastNavLaunch > 1500) {
             ui.removeCallbacks(navBack);
@@ -462,7 +471,7 @@ public class MainActivity extends Activity {
         int w = dm.widthPixels, h = dm.heightPixels;
         int lw = Math.round(w * prefs().getFloat("left_ratio", 0.62f));
         int cap = dp(prefs().getInt("cap_dp", 36));
-        return new Rect[]{new Rect(0, -cap, lw, h), new Rect(lw, 0, w, h)};
+        return new Rect[]{new Rect(0, -cap, lw, h), new Rect(lw, -cap, w, h)};
     }
 
     private void launchIn(ComponentName cn, Rect bounds) {
@@ -705,10 +714,12 @@ public class MainActivity extends Activity {
                 "자유 형식 창: " + ff + " (개발자 옵션 열기)",
                 "기본 홈 앱 바꾸기",
                 "네비 위 파란 줄 숨기기: " + prefs().getInt("cap_dp", 36),
-                "GT 홈 업데이트 (지금 " + versionName() + ")",
+                "업데이트 (지금 " + versionName() + ")",
+                "맨 위 막대 숨기기(쓸어내리면 나옴): " + (prefs().getBoolean("hide_bar", true) ? "켬" : "끔"),
+                "맨 위 막대 색을 홈과 같게 (배경화면 바꾸기)",
         };
         showDlg(new AlertDialog.Builder(this)
-                .setTitle("GT 홈 설정")
+                .setTitle("싼슬라 설정")
                 .setItems(items, (d, w) -> {
                     switch (w) {
                         case 0: openDrawer(-2); break;
@@ -720,6 +731,12 @@ public class MainActivity extends Activity {
                         case 6: openSettings(Settings.ACTION_HOME_SETTINGS); break;
                         case 7: chooseCaption(); break;
                         case 8: update(); break;
+                        case 9:
+                            boolean hb = !prefs().getBoolean("hide_bar", true);
+                            prefs().edit().putBoolean("hide_bar", hb).apply();
+                            if (hb) immersive(); else getWindow().getDecorView().setSystemUiVisibility(0);
+                            break;
+                        case 10: darkWallpaper(); break;
                     }
                 }));
     }
@@ -739,6 +756,17 @@ public class MainActivity extends Activity {
                 }));
     }
 
+    private void darkWallpaper() {
+        try {
+            Bitmap b = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+            b.eraseColor(BG);
+            android.app.WallpaperManager.getInstance(this).setBitmap(b);
+            Toast.makeText(this, "배경화면을 홈 색으로 바꿨어요", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "배경화면을 바꿀 수 없어요", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private String versionName() {
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
         catch (Exception e) { return "?"; }
@@ -750,7 +778,7 @@ public class MainActivity extends Activity {
         try {
             final android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
             android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(android.net.Uri.parse(APK_URL));
-            r.setTitle("GT 홈 업데이트");
+            r.setTitle("싼슬라 업데이트");
             r.setMimeType("application/vnd.android.package-archive");
             r.setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS,
                     "gt-home-" + System.currentTimeMillis() + ".apk");
