@@ -157,7 +157,7 @@ public class MainActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus && drawer == null && freeformOn() && prefs().getBoolean("auto_nav", true)
+        if (hasFocus && drawer == null && dlgOpen == 0 && freeformOn() && prefs().getBoolean("auto_nav", true)
                 && System.currentTimeMillis() - lastNavLaunch > 1500) {
             ui.removeCallbacks(navBack);
             ui.postDelayed(navBack, 250);
@@ -165,6 +165,21 @@ public class MainActivity extends Activity {
     }
 
     private final Runnable navBack = this::launchNav;
+    private int dlgOpen = 0;
+
+    /** 설정 창은 오른쪽에 띄우고, 떠 있는 동안 네비가 덮지 않게 */
+    private void showDlg(AlertDialog.Builder b) {
+        ui.removeCallbacks(navBack);
+        dlgOpen++;
+        AlertDialog d = b.create();
+        d.setOnDismissListener(x -> { if (dlgOpen > 0) dlgOpen--; });
+        d.show();
+        if (d.getWindow() != null) {
+            d.getWindow().setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            d.getWindow().setLayout(Math.round(getResources().getDisplayMetrics().widthPixels * 0.36f),
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -409,11 +424,11 @@ public class MainActivity extends Activity {
         final ComponentName target = cn;
         t.setOnClickListener(v -> launchRight(target));
         t.setOnLongClickListener(v -> {
-            new AlertDialog.Builder(this)
+            showDlg(new AlertDialog.Builder(this)
                     .setItems(new String[]{"다른 앱으로 바꾸기", "이 칸 비우기"}, (d, w) -> {
                         if (w == 0) openDrawer(slot);
                         else { prefs().edit().remove("slot_" + slot).apply(); buildGrid(); }
-                    }).show();
+                    }));
             return true;
         });
         return t;
@@ -690,8 +705,9 @@ public class MainActivity extends Activity {
                 "자유 형식 창: " + ff + " (개발자 옵션 열기)",
                 "기본 홈 앱 바꾸기",
                 "네비 위 파란 줄 숨기기: " + prefs().getInt("cap_dp", 36),
+                "GT 홈 업데이트 (지금 " + versionName() + ")",
         };
-        new AlertDialog.Builder(this)
+        showDlg(new AlertDialog.Builder(this)
                 .setTitle("GT 홈 설정")
                 .setItems(items, (d, w) -> {
                     switch (w) {
@@ -703,13 +719,14 @@ public class MainActivity extends Activity {
                         case 5: openSettings(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS); break;
                         case 6: openSettings(Settings.ACTION_HOME_SETTINGS); break;
                         case 7: chooseCaption(); break;
+                        case 8: update(); break;
                     }
-                }).show();
+                }));
     }
 
     private void chooseRatio() {
         final float[] vals = {0.55f, 0.62f, 0.70f};
-        new AlertDialog.Builder(this)
+        showDlg(new AlertDialog.Builder(this)
                 .setTitle("왼쪽(네비) 크기")
                 .setItems(new String[]{"55%", "62%", "70%"}, (d, w) -> {
                     prefs().edit().putFloat("left_ratio", vals[w]).apply();
@@ -719,27 +736,62 @@ public class MainActivity extends Activity {
                     photoIdx = -1;
                     loadPhotos();
                     startSlideshow();
-                }).show();
+                }));
+    }
+
+    private String versionName() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (Exception e) { return "?"; }
+    }
+
+    private static final String APK_URL = "https://github.com/gamtanstudio/gt-home/releases/download/latest/gt-home.apk";
+
+    private void update() {
+        try {
+            final android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(android.net.Uri.parse(APK_URL));
+            r.setTitle("GT 홈 업데이트");
+            r.setMimeType("application/vnd.android.package-archive");
+            r.setDestinationInExternalFilesDir(this, android.os.Environment.DIRECTORY_DOWNLOADS,
+                    "gt-home-" + System.currentTimeMillis() + ".apk");
+            r.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            final long id = dm.enqueue(r);
+            Toast.makeText(this, "업데이트 받는 중…", Toast.LENGTH_LONG).show();
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, Intent i) {
+                    if (i.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1) != id) return;
+                    try { unregisterReceiver(this); } catch (Exception ignored) { }
+                    android.net.Uri u = dm.getUriForDownloadedFile(id);
+                    if (u == null) { Toast.makeText(c, "받기 실패 — 인터넷을 확인해 주세요", Toast.LENGTH_LONG).show(); return; }
+                    Intent in = new Intent(Intent.ACTION_VIEW);
+                    in.setDataAndType(u, "application/vnd.android.package-archive");
+                    in.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(in); } catch (Exception e) { Toast.makeText(c, "설치 화면을 열 수 없어요", Toast.LENGTH_LONG).show(); }
+                }
+            }, new android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        } catch (Exception e) {
+            Toast.makeText(this, "업데이트를 시작할 수 없어요", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void chooseCaption() {
         final int[] vals = {0, 24, 30, 36, 42, 48};
-        new AlertDialog.Builder(this)
+        showDlg(new AlertDialog.Builder(this)
                 .setTitle("네비 위 파란 줄 숨기기")
                 .setItems(new String[]{"0 (안 숨김)", "24", "30", "36", "42", "48"}, (d, w) -> {
                     prefs().edit().putInt("cap_dp", vals[w]).apply();
                     launchNav();
-                }).show();
+                }));
     }
 
     private void chooseInterval() {
         final int[] vals = {10, 15, 30, 60};
-        new AlertDialog.Builder(this)
+        showDlg(new AlertDialog.Builder(this)
                 .setTitle("사진 넘김 간격")
                 .setItems(new String[]{"10초", "15초", "30초", "1분"}, (d, w) -> {
                     prefs().edit().putInt("interval", vals[w]).apply();
                     startSlideshow();
-                }).show();
+                }));
     }
 
     private void askToken() {
@@ -747,7 +799,7 @@ public class MainActivity extends Activity {
         et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         et.setText(prefs().getString("token", ""));
         et.setSingleLine(true);
-        new AlertDialog.Builder(this)
+        showDlg(new AlertDialog.Builder(this)
                 .setTitle("앨범 토큰")
                 .setView(et)
                 .setPositiveButton("저장", (d, w) -> {
@@ -758,8 +810,7 @@ public class MainActivity extends Activity {
                     loadPhotos();
                     syncAlbum();
                 })
-                .setNegativeButton("취소", null)
-                .show();
+                .setNegativeButton("취소", null));
     }
 
     private void openSettings(String action) {
@@ -806,6 +857,7 @@ public class MainActivity extends Activity {
     /** pick: -1 그냥 실행(오른쪽), -2 네비 고르기, 0~5 칸에 넣기 */
     private void openDrawer(int pick) {
         closeDrawer();
+        ui.removeCallbacks(navBack);
         drawer = new FrameLayout(this);
         drawer.setBackgroundColor(Color.parseColor("#F2080A10"));
         drawer.setClickable(true);
