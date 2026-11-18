@@ -15,6 +15,9 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.content.res.ColorStateList;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -149,6 +152,12 @@ public class MainActivity extends Activity {
 
         h.addView(clockBox, new LinearLayout.LayoutParams(0, -2, 1f));
 
+        TextView sp = pill("◧ 화면 분할", v -> startSplit());
+        sp.setBackground(rounded(ACCENT, dp(28)));
+        sp.setOnLongClickListener(v -> { splitSettings(); return true; });
+        h.addView(sp);
+        View gap0 = new View(this);
+        h.addView(gap0, new LinearLayout.LayoutParams(dp(12), 1));
         h.addView(pill("전체 앱", v -> openDrawer(-1)));
         View gap = new View(this);
         h.addView(gap, new LinearLayout.LayoutParams(dp(12), 1));
@@ -300,6 +309,88 @@ public class MainActivity extends Activity {
         prefs().edit().putBoolean("init", true).apply();
     }
 
+    // ---------- 화면 분할 ----------
+
+    private static final String[] LEFT_DEFAULTS = {"com.skt.tmap.ku", "com.locnall.KimGiSaNavi", "com.nhn.android.nmap"};
+    private static final String[] RIGHT_DEFAULTS = {"app.revanced.android.youtube", "com.gtman.browser/com.gtman.browser.TubeActivity", "com.google.android.youtube", "com.gtman.browser/com.gtman.browser.MainActivity"};
+
+    private ComponentName resolve(String d) {
+        if (d == null) return null;
+        PackageManager pm = getPackageManager();
+        if (d.contains("/")) {
+            ComponentName c = ComponentName.unflattenFromString(d);
+            try { pm.getActivityInfo(c, 0); return c; } catch (Exception e) { return null; }
+        }
+        Intent li = pm.getLaunchIntentForPackage(d);
+        return li == null ? null : li.getComponent();
+    }
+
+    private ComponentName splitApp(String key, String[] defaults) {
+        ComponentName c = resolve(prefs().getString(key, null));
+        if (c != null) return c;
+        for (String d : defaults) { c = resolve(d); if (c != null) return c; }
+        return null;
+    }
+
+    private String label(ComponentName c, PackageManager pm) {
+        if (c == null) return "없음";
+        try { return String.valueOf(pm.getActivityInfo(c, 0).loadLabel(pm)); } catch (Exception e) { return "없음"; }
+    }
+
+    private void splitSettings() {
+        PackageManager pm = getPackageManager();
+        String ln = label(splitApp("split_left", LEFT_DEFAULTS), pm);
+        String rn = label(splitApp("split_right", RIGHT_DEFAULTS), pm);
+        new AlertDialog.Builder(this)
+                .setTitle("화면 분할 설정")
+                .setItems(new String[]{"왼쪽 앱 바꾸기 (지금: " + ln + ")", "오른쪽 앱 바꾸기 (지금: " + rn + ")", "접근성 설정 열기"}, (d, w) -> {
+                    if (w == 0) openDrawer(-2);
+                    else if (w == 1) openDrawer(-3);
+                    else openAccessibility();
+                })
+                .show();
+    }
+
+    private void openAccessibility() {
+        try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception e) { Toast.makeText(this, "접근성 설정을 열 수 없어요", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void startSplit() {
+        if (!SplitService.ready()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("처음 한 번만 켜 주세요")
+                    .setMessage("설정 → 접근성 → 'GT 홈 화면 분할'을 켜야 분할 버튼이 동작해요.")
+                    .setPositiveButton("접근성 열기", (d, w) -> openAccessibility())
+                    .setNegativeButton("닫기", null)
+                    .show();
+            return;
+        }
+        final ComponentName left = splitApp("split_left", LEFT_DEFAULTS);
+        final ComponentName right = splitApp("split_right", RIGHT_DEFAULTS);
+        if (left == null) { openDrawer(-2); return; }
+        if (right == null) { openDrawer(-3); return; }
+        launch(left);
+        final Handler hd = new Handler(Looper.getMainLooper());
+        hd.postDelayed(() -> {
+            if (!SplitService.toggleSplit()) {
+                Toast.makeText(getApplicationContext(), "이 기기에서 화면 분할이 안 되네요", Toast.LENGTH_LONG).show();
+                return;
+            }
+            hd.postDelayed(() -> {
+                try {
+                    Intent i = new Intent(Intent.ACTION_MAIN);
+                    i.addCategory(Intent.CATEGORY_LAUNCHER);
+                    i.setComponent(right);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+                    getApplicationContext().startActivity(i);
+                } catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), "오른쪽 앱을 열 수 없어요", Toast.LENGTH_SHORT).show();
+                }
+            }, 1200);
+        }, 1800);
+    }
+
     // ---------- 칸 수 설정 ----------
 
     private void showSettings() {
@@ -351,7 +442,7 @@ public class MainActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = new TextView(this);
-        title.setText(pickSlot >= 0 ? "이 칸에 넣을 앱을 고르세요" : "전체 앱");
+        title.setText(pickSlot >= 0 ? "이 칸에 넣을 앱을 고르세요" : pickSlot == -2 ? "왼쪽(네비)에 띄울 앱" : pickSlot == -3 ? "오른쪽에 띄울 앱" : "전체 앱");
         title.setTextColor(Color.WHITE);
         title.setTextSize(24);
         top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -408,7 +499,11 @@ public class MainActivity extends Activity {
         gv.setOnItemClickListener((parent, view, pos, id) -> {
             ResolveInfo r = apps.get(pos);
             ComponentName cn = new ComponentName(r.activityInfo.packageName, r.activityInfo.name);
-            if (pickSlot >= 0) {
+            if (pickSlot == -2 || pickSlot == -3) {
+                prefs().edit().putString(pickSlot == -2 ? "split_left" : "split_right", cn.flattenToString()).apply();
+                closeDrawer();
+                Toast.makeText(this, "저장했어요", Toast.LENGTH_SHORT).show();
+            } else if (pickSlot >= 0) {
                 setSlot(pickSlot, cn);
                 closeDrawer();
                 buildGrid();
