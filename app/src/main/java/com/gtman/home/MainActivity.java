@@ -213,7 +213,7 @@ public class MainActivity extends Activity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         root.addView(row, new FrameLayout.LayoutParams(-1, -1));
 
-        float ratio = prefs().getFloat("left_ratio", 0.62f);
+        float ratio = prefs().getFloat("left_ratio2", 0.5f);
 
         // ---- 왼쪽: 네비 자리 ----
         leftArea = new LinearLayout(this);
@@ -242,8 +242,8 @@ public class MainActivity extends Activity {
         // ---- 오른쪽 패널 ----
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setBackgroundColor(PANEL);
-        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        panel.setBackgroundColor(BG);
+        panel.setPadding(dp(16), dp(prefs().getBoolean("hide_bar", true) ? 40 : 16), dp(16), dp(16));
         row.addView(panel, new LinearLayout.LayoutParams(0, -1, 1f - ratio));
 
         panel.addView(buildPhotoCard(), new LinearLayout.LayoutParams(-1, 0, 4.4f));
@@ -306,16 +306,17 @@ public class MainActivity extends Activity {
 
         TextView gear = new TextView(this);
         gear.setText("⚙");
-        gear.setTextSize(22);
+        gear.setTextSize(28);
         gear.setTextColor(Color.WHITE);
         gear.setGravity(Gravity.CENTER);
         gear.setBackground(round(Color.parseColor("#66000000"), dp(24)));
         gear.setOnClickListener(v -> showSettings());
-        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.END);
-        glp.setMargins(0, dp(12), dp(12), 0);
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM | Gravity.END);
+        glp.setMargins(0, 0, dp(12), dp(12));
         card.addView(gear, glp);
 
         card.setOnClickListener(v -> nextPhoto());
+        card.setOnLongClickListener(v -> { showSettings(); return true; });
         return card;
     }
 
@@ -469,7 +470,7 @@ public class MainActivity extends Activity {
         DisplayMetrics dm = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(dm);
         int w = dm.widthPixels, h = dm.heightPixels;
-        int lw = Math.round(w * prefs().getFloat("left_ratio", 0.62f));
+        int lw = Math.round(w * prefs().getFloat("left_ratio2", 0.5f));
         int cap = dp(prefs().getInt("cap_dp", 36));
         return new Rect[]{new Rect(0, -cap, lw, h), new Rect(lw, -cap, w, h)};
     }
@@ -742,11 +743,11 @@ public class MainActivity extends Activity {
     }
 
     private void chooseRatio() {
-        final float[] vals = {0.55f, 0.62f, 0.70f};
+        final float[] vals = {0.5f, 0.55f, 0.62f, 0.70f};
         showDlg(new AlertDialog.Builder(this)
                 .setTitle("왼쪽(네비) 크기")
-                .setItems(new String[]{"55%", "62%", "70%"}, (d, w) -> {
-                    prefs().edit().putFloat("left_ratio", vals[w]).apply();
+                .setItems(new String[]{"반반 (50%)", "55%", "62%", "70%"}, (d, w) -> {
+                    prefs().edit().putFloat("left_ratio2", vals[w]).apply();
                     buildUi();
                     refreshNavArea();
                     buildGrid();
