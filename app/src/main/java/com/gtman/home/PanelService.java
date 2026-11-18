@@ -134,6 +134,11 @@ public class PanelService extends AccessibilityService {
         String pkg = p.toString();
         if (pkg.equals("com.android.systemui") || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 || pkg.equals(defaultIme())) return;
+        if (pkg.equals(getPackageName())) {
+            // 싼슬라 자신의 패널·영상 창 같은 건 무시하고, 홈 화면일 때만 판단
+            CharSequence cls = e.getClassName();
+            if (cls == null || !cls.toString().endsWith("MainActivity")) return;
+        }
         ComponentName nav = navApp(this);
         boolean show = (nav != null && pkg.equals(nav.getPackageName()))
                 || (pkg.equals(getPackageName()) && MainActivity.homeMode);
@@ -156,6 +161,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void hidePanel() {
+        exitVideoFull(true);
         if (!attached) return;
         try { wm.removeView(root); } catch (Exception ignored) { }
         attached = false;
@@ -442,7 +448,10 @@ public class PanelService extends AccessibilityService {
             s.setUseWideViewPort(true);
             web.setBackgroundColor(Color.BLACK);
             web.setWebViewClient(new WebViewClient());
-            web.setWebChromeClient(new WebChromeClient());
+            web.setWebChromeClient(new WebChromeClient() {
+                @Override public void onShowCustomView(View v, CustomViewCallback cb) { enterVideoFull(v, cb); }
+                @Override public void onHideCustomView() { exitVideoFull(false); }
+            });
             web.loadUrl(prefs().getString("web_last", "https://m.youtube.com/"));
         } else {
             if (web.getParent() != null) ((android.view.ViewGroup) web.getParent()).removeView(web);
@@ -575,6 +584,60 @@ public class PanelService extends AccessibilityService {
         PlaybackState st = ctrl == null ? null : ctrl.getPlaybackState();
         boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
         if (mPlay != null) mPlay.setText(playing ? "⏸" : "▶");
+    }
+
+    // ---------- 영상 전체 화면 ↔ 원래대로 ----------
+    private FrameLayout videoRoot;
+    private WebChromeClient.CustomViewCallback videoCb;
+
+    private void enterVideoFull(View v, WebChromeClient.CustomViewCallback cb) {
+        exitVideoFull(true);
+        videoCb = cb;
+        videoRoot = new FrameLayout(this);
+        videoRoot.setBackgroundColor(Color.BLACK);
+        if (v.getParent() != null) ((android.view.ViewGroup) v.getParent()).removeView(v);
+        videoRoot.addView(v, new FrameLayout.LayoutParams(-1, -1));
+        TextView back = new TextView(this);
+        back.setText("⤡  원래대로");
+        back.setTextColor(Color.WHITE);
+        back.setTextSize(15);
+        back.setPadding(dp(18), dp(10), dp(18), dp(10));
+        back.setBackground(round(Color.parseColor("#88000000"), dp(22)));
+        back.setOnClickListener(x -> exitVideoFull(true));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        bl.setMargins(0, dp(16), dp(16), 0);
+        videoRoot.addView(back, bl);
+        videoRoot.setFocusableInTouchMode(true);
+        videoRoot.setOnKeyListener((x, code, ev) -> {
+            if (code == KeyEvent.KEYCODE_BACK && ev.getAction() == KeyEvent.ACTION_UP) { exitVideoFull(true); return true; }
+            return code == KeyEvent.KEYCODE_BACK;
+        });
+        WindowManager.LayoutParams fl = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_FULLSCREEN
+                        | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                PixelFormat.OPAQUE);
+        try {
+            wm.addView(videoRoot, fl);
+            videoRoot.requestFocus();
+        } catch (Exception e) {
+            videoRoot = null;
+            if (cb != null) cb.onCustomViewHidden();
+            videoCb = null;
+        }
+    }
+
+    /** tellWeb=true 면 웹페이지에도 전체 화면이 끝났다고 알려 줌 */
+    private void exitVideoFull(boolean tellWeb) {
+        if (videoRoot == null) return;
+        FrameLayout r = videoRoot;
+        videoRoot = null;
+        try { wm.removeView(r); } catch (Exception ignored) { }
+        r.removeAllViews();
+        WebChromeClient.CustomViewCallback cb = videoCb;
+        videoCb = null;
+        if (tellWeb && cb != null) { try { cb.onCustomViewHidden(); } catch (Exception ignored) { } }
     }
 
     private void openWeb(String url) {
