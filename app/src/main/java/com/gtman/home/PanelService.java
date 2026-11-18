@@ -346,22 +346,27 @@ public class PanelService extends AccessibilityService {
         card.addView(shade, new FrameLayout.LayoutParams(-1, -1));
 
         LinearLayout clock = new LinearLayout(this);
-        clock.setOrientation(LinearLayout.VERTICAL);
-        clock.setPadding(dp(16), 0, dp(16), dp(12));
+        clock.setOrientation(LinearLayout.HORIZONTAL);
+        clock.setGravity(Gravity.BOTTOM);
+        clock.setPadding(dp(14), 0, dp(14), dp(10));
         TextClock t = new TextClock(this);
         t.setFormat24Hour("HH:mm");
         t.setFormat12Hour("HH:mm");
         t.setTextColor(Color.WHITE);
-        t.setTextSize(44);
-        t.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        t.setIncludeFontPadding(false);
+        t.setTextSize(20);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        t.setShadowLayer(6, 0, 1, Color.parseColor("#99000000"));
         clock.addView(t);
         TextClock d = new TextClock(this);
         d.setFormat24Hour("M월 d일 EEEE");
         d.setFormat12Hour("M월 d일 EEEE");
         d.setTextColor(Color.parseColor("#E6ECF5"));
         d.setTextSize(14);
-        clock.addView(d);
+        d.setShadowLayer(6, 0, 1, Color.parseColor("#99000000"));
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(-2, -2);
+        dl.leftMargin = dp(10);
+        dl.bottomMargin = dp(2);
+        clock.addView(d, dl);
         card.addView(clock, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.START));
 
         card.setOnClickListener(v -> nextPhoto());
@@ -395,8 +400,8 @@ public class PanelService extends AccessibilityService {
         t.setFormat24Hour("HH:mm");
         t.setFormat12Hour("HH:mm");
         t.setTextColor(Color.WHITE);
-        t.setTextSize(24);
-        t.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        t.setTextSize(18);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
         tl.topMargin = dp(10);
         col.addView(t, tl);
