@@ -155,6 +155,18 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && drawer == null && freeformOn() && prefs().getBoolean("auto_nav", true)
+                && System.currentTimeMillis() - lastNavLaunch > 1500) {
+            ui.removeCallbacks(navBack);
+            ui.postDelayed(navBack, 250);
+        }
+    }
+
+    private final Runnable navBack = this::launchNav;
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         closeDrawer();
@@ -434,7 +446,8 @@ public class MainActivity extends Activity {
         getWindowManager().getDefaultDisplay().getRealMetrics(dm);
         int w = dm.widthPixels, h = dm.heightPixels;
         int lw = Math.round(w * prefs().getFloat("left_ratio", 0.62f));
-        return new Rect[]{new Rect(0, 0, lw, h), new Rect(lw, 0, w, h)};
+        int cap = dp(prefs().getInt("cap_dp", 36));
+        return new Rect[]{new Rect(0, -cap, lw, h), new Rect(lw, 0, w, h)};
     }
 
     private void launchIn(ComponentName cn, Rect bounds) {
@@ -676,6 +689,7 @@ public class MainActivity extends Activity {
                 "사진 넘김 간격",
                 "자유 형식 창: " + ff + " (개발자 옵션 열기)",
                 "기본 홈 앱 바꾸기",
+                "네비 위 파란 줄 숨기기: " + prefs().getInt("cap_dp", 36),
         };
         new AlertDialog.Builder(this)
                 .setTitle("GT 홈 설정")
@@ -688,6 +702,7 @@ public class MainActivity extends Activity {
                         case 4: chooseInterval(); break;
                         case 5: openSettings(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS); break;
                         case 6: openSettings(Settings.ACTION_HOME_SETTINGS); break;
+                        case 7: chooseCaption(); break;
                     }
                 }).show();
     }
@@ -704,6 +719,16 @@ public class MainActivity extends Activity {
                     photoIdx = -1;
                     loadPhotos();
                     startSlideshow();
+                }).show();
+    }
+
+    private void chooseCaption() {
+        final int[] vals = {0, 24, 30, 36, 42, 48};
+        new AlertDialog.Builder(this)
+                .setTitle("네비 위 파란 줄 숨기기")
+                .setItems(new String[]{"0 (안 숨김)", "24", "30", "36", "42", "48"}, (d, w) -> {
+                    prefs().edit().putInt("cap_dp", vals[w]).apply();
+                    launchNav();
                 }).show();
     }
 
