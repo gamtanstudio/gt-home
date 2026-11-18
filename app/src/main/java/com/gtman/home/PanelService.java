@@ -18,6 +18,10 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -89,6 +93,11 @@ public class PanelService extends AccessibilityService {
     private final List<Object> photos = new ArrayList<>();
     private WebView web;
 
+    // 지금 재생 중인 곡
+    private MediaController ctrl;
+    private TextView mTitle, mArtist, mPlay;
+    private ImageView mArt;
+
     // ------------------------------------------------------------------
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
     private SharedPreferences prefs() { return getSharedPreferences("gthome", MODE_PRIVATE); }
@@ -98,6 +107,7 @@ public class PanelService extends AccessibilityService {
         inst = this;
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         loadPhotos();
+        setupMedia();
         ui.post(syncTick);
         ui.postDelayed(slideTick, interval());
     }
@@ -270,18 +280,7 @@ public class PanelService extends AccessibilityService {
 
         col.addView(buildPhotoCard(), new LinearLayout.LayoutParams(-1, 0, 4.2f));
 
-        LinearLayout media = new LinearLayout(this);
-        media.setGravity(Gravity.CENTER_VERTICAL);
-        media.setPadding(dp(16), dp(8), dp(8), dp(8));
-        media.setBackground(round(CARD, dp(18)));
-        TextView ml = new TextView(this);
-        ml.setText("♪  음악");
-        ml.setTextColor(Color.WHITE);
-        ml.setTextSize(15);
-        media.addView(ml, new LinearLayout.LayoutParams(0, -2, 1f));
-        media.addView(mediaBtn("⏮", KeyEvent.KEYCODE_MEDIA_PREVIOUS));
-        media.addView(mediaBtn("⏯", KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE));
-        media.addView(mediaBtn("⏭", KeyEvent.KEYCODE_MEDIA_NEXT));
+        View media = buildMedia();
         LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(-1, -2);
         mlp.topMargin = dp(12);
         col.addView(media, mlp);
@@ -461,6 +460,123 @@ public class PanelService extends AccessibilityService {
         return col;
     }
 
+    private View buildMedia() {
+        LinearLayout media = new LinearLayout(this);
+        media.setGravity(Gravity.CENTER_VERTICAL);
+        media.setPadding(dp(10), dp(10), dp(6), dp(10));
+        media.setBackground(round(CARD, dp(18)));
+        mArt = new ImageView(this);
+        mArt.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        mArt.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.parseColor("#7C4DFF"), Color.parseColor("#4F8BFF")}));
+        mArt.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(10)); }
+        });
+        mArt.setClipToOutline(true);
+        media.addView(mArt, new LinearLayout.LayoutParams(dp(54), dp(54)));
+        LinearLayout txt = new LinearLayout(this);
+        txt.setOrientation(LinearLayout.VERTICAL);
+        txt.setPadding(dp(12), 0, dp(4), 0);
+        mTitle = new TextView(this);
+        mTitle.setTextColor(Color.WHITE);
+        mTitle.setTextSize(15);
+        mTitle.setSingleLine(true);
+        mTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        txt.addView(mTitle);
+        mArtist = new TextView(this);
+        mArtist.setTextColor(DIM);
+        mArtist.setTextSize(12);
+        mArtist.setSingleLine(true);
+        mArtist.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        txt.addView(mArtist);
+        media.addView(txt, new LinearLayout.LayoutParams(0, -2, 1f));
+        media.addView(mediaBtn("⏮", KeyEvent.KEYCODE_MEDIA_PREVIOUS));
+        mPlay = mediaBtn("⏯", KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+        media.addView(mPlay);
+        media.addView(mediaBtn("⏭", KeyEvent.KEYCODE_MEDIA_NEXT));
+        txt.setOnClickListener(v -> {
+            if (!mediaAllowed()) openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+        });
+        refreshMedia();
+        return media;
+    }
+
+    private boolean mediaAllowed() {
+        String s = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        return s != null && s.contains(getPackageName());
+    }
+
+    private void openSettings(String action) {
+        hidePanel();
+        try { startActivity(new Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception ignored) { }
+    }
+
+    private final MediaController.Callback ctrlCb = new MediaController.Callback() {
+        @Override public void onMetadataChanged(MediaMetadata m) { ui.post(PanelService.this::refreshMedia); }
+        @Override public void onPlaybackStateChanged(PlaybackState st) { ui.post(PanelService.this::refreshMedia); }
+        @Override public void onSessionDestroyed() { ui.post(() -> { pickController(); refreshMedia(); }); }
+    };
+
+    private void setupMedia() {
+        try {
+            MediaSessionManager msm = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+            ComponentName me = new ComponentName(this, MediaListener.class);
+            msm.addOnActiveSessionsChangedListener(list -> ui.post(() -> { pickController(); refreshMedia(); }), me, ui);
+            pickController();
+        } catch (Throwable ignored) {
+            ui.postDelayed(this::setupMedia, 30000); // 권한 켜질 때까지 가끔 다시 시도
+        }
+    }
+
+    private void pickController() {
+        try {
+            MediaSessionManager msm = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+            List<MediaController> list = msm.getActiveSessions(new ComponentName(this, MediaListener.class));
+            MediaController best = null;
+            for (MediaController c : list) {
+                PlaybackState st = c.getPlaybackState();
+                if (st != null && st.getState() == PlaybackState.STATE_PLAYING) { best = c; break; }
+                if (best == null) best = c;
+            }
+            if (ctrl != null) { try { ctrl.unregisterCallback(ctrlCb); } catch (Exception ignored) { } }
+            ctrl = best;
+            if (ctrl != null) ctrl.registerCallback(ctrlCb, ui);
+        } catch (Throwable ignored) {
+            ctrl = null;
+        }
+    }
+
+    private void refreshMedia() {
+        if (mTitle == null) return;
+        if (!mediaAllowed()) {
+            mTitle.setText("음악");
+            mArtist.setText("눌러서 곡 제목 보이게 하기");
+            return;
+        }
+        MediaMetadata m = ctrl == null ? null : ctrl.getMetadata();
+        String title = m == null ? null : m.getString(MediaMetadata.METADATA_KEY_TITLE);
+        String artist = m == null ? null : m.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        if (artist == null && m != null) artist = m.getString(MediaMetadata.METADATA_KEY_ALBUM);
+        mTitle.setText(title == null || title.isEmpty() ? "재생 중인 음악 없음" : title);
+        String app = "";
+        if (ctrl != null) {
+            try { app = String.valueOf(getPackageManager().getApplicationLabel(getPackageManager().getApplicationInfo(ctrl.getPackageName(), 0))); }
+            catch (Exception ignored) { }
+        }
+        mArtist.setText(artist == null || artist.isEmpty() ? app : artist + (app.isEmpty() ? "" : "  ·  " + app));
+        Bitmap art = null;
+        if (m != null) {
+            art = m.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            if (art == null) art = m.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+        }
+        mArt.setImageBitmap(art);
+        PlaybackState st = ctrl == null ? null : ctrl.getPlaybackState();
+        boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
+        if (mPlay != null) mPlay.setText(playing ? "⏸" : "▶");
+    }
+
     private void openWeb(String url) {
         prefs().edit().putString("web_last", url).apply();
         if (web != null) web.loadUrl(url);
@@ -516,6 +632,16 @@ public class PanelService extends AccessibilityService {
         t.setGravity(Gravity.CENTER);
         t.setLayoutParams(new LinearLayout.LayoutParams(dp(46), dp(44)));
         t.setOnClickListener(v -> {
+            if (ctrl != null) {
+                try {
+                    MediaController.TransportControls tc = ctrl.getTransportControls();
+                    if (code == KeyEvent.KEYCODE_MEDIA_NEXT) { tc.skipToNext(); return; }
+                    if (code == KeyEvent.KEYCODE_MEDIA_PREVIOUS) { tc.skipToPrevious(); return; }
+                    PlaybackState st = ctrl.getPlaybackState();
+                    if (st != null && st.getState() == PlaybackState.STATE_PLAYING) tc.pause(); else tc.play();
+                    return;
+                } catch (Exception ignored) { }
+            }
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, code));
             am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, code));
