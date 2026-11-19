@@ -182,16 +182,39 @@ public class PanelService extends AccessibilityService {
 
     private void checkKeyboard() {
         boolean up = false;
+        android.graphics.Rect ime = new android.graphics.Rect();
         try {
             for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
-                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) { up = true; break; }
+                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                    up = true; w.getBoundsInScreen(ime); break; }
             }
         } catch (Exception ignored) { }
+        // 패널 안(유튜브·인터넷)에서 글자를 치는 중이면 패널을 숨기지 않고, 키보드 위까지만 줄임
+        if (up && attached && mode == MODE_WEB && root != null && root.hasWindowFocus()) {
+            typingInPanel = true;
+            keyboardUp = false;
+            if (ime.top > lp.y + dp(120)) {
+                lp.height = ime.top - lp.y - dp(8);
+                try { wm.updateViewLayout(root, lp); } catch (Exception ignored) { }
+            }
+            return;
+        }
+        if (!up && typingInPanel) {
+            typingInPanel = false;
+            if (attached) {
+                int keepW = lp.width, keepX = lp.x;
+                makeParams();
+                lp.width = keepW; lp.x = keepX;
+                try { wm.updateViewLayout(root, lp); } catch (Exception ignored) { }
+            }
+            return;
+        }
         if (up == keyboardUp) return;
         keyboardUp = up;
         if (up) hidePanel();
         else if (wantShow) ui.postDelayed(() -> { if (!keyboardUp && wantShow) showPanel(); }, 300);
     }
+    private boolean typingInPanel = false;
 
     private String defaultIme() {
         try {
@@ -260,6 +283,8 @@ public class PanelService extends AccessibilityService {
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 (mode == MODE_WEB ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.END;

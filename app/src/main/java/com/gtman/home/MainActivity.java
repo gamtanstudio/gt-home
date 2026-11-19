@@ -245,9 +245,13 @@ public class MainActivity extends Activity {
     }
 
     private void chooseGapFor(String key, String title) {
-        final int[] vals = {0, 24, 48, 72, 96, 120, 150};
+        final int[] vals = key.equals("top_gap")
+                ? new int[]{-40, -32, -24, -16, -8, 0, 24, 48, 72, 96}
+                : new int[]{0, 24, 48, 72, 96, 120, 150};
+        String[] names = new String[vals.length];
+        for (int i = 0; i < vals.length; i++) names[i] = vals[i] == 0 ? "0" : String.valueOf(vals[i]);
         new AlertDialog.Builder(this).setTitle(title)
-                .setItems(new String[]{"0 (끝까지)", "24", "48", "72", "96", "120", "150"}, (d, w) -> {
+                .setItems(names, (d, w) -> {
                     prefs().edit().putInt(key, vals[w]).apply(); showSettings(); })
                 .show();
     }
