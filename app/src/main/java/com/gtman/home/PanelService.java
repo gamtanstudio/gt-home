@@ -453,6 +453,7 @@ public class PanelService extends AccessibilityService {
         }
         View fill = new View(this);
         col.addView(fill, new LinearLayout.LayoutParams(1, 0, 1f));
+        if (web != null) col.addView(textBtn("▶ 영상", v -> setMode(MODE_WEB)));
         col.addView(textBtn("펼치기 ▶", v -> setMode(MODE_FULL)));
         return col;
     }
@@ -469,6 +470,9 @@ public class PanelService extends AccessibilityService {
         View s1 = new View(this);
         top.addView(s1, new LinearLayout.LayoutParams(dp(8), 1));
         top.addView(chip("←", v -> { if (web != null && web.canGoBack()) web.goBack(); }));
+        View s2 = new View(this);
+        top.addView(s2, new LinearLayout.LayoutParams(dp(8), 1));
+        top.addView(chip("작게", v -> setMode(MODE_MINI)));
         View fill = new View(this);
         top.addView(fill, new LinearLayout.LayoutParams(0, 1, 1f));
         TextClock t = new TextClock(this);
@@ -716,7 +720,6 @@ public class PanelService extends AccessibilityService {
 
     void setMode(int m) {
         mode = m;
-        if (m != MODE_WEB && web != null) web.onPause();
         boolean was = attached;
         hidePanel();
         if (was) showPanel();
