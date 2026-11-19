@@ -141,10 +141,34 @@ public class PanelService extends AccessibilityService {
             if (cls == null || !cls.toString().endsWith("MainActivity")) return;
         }
         ComponentName nav = navApp(this);
+        boolean isNavOrHome = (nav != null && pkg.equals(nav.getPackageName())) || pkg.equals(getPackageName());
+        if (!isNavOrHome && !isBigWindow(pkg, e.getClassName())) return; // 볼륨 창 같은 작은 팝업은 무시
         boolean show = (nav != null && pkg.equals(nav.getPackageName()))
                 || (pkg.equals(getPackageName()) && MainActivity.homeMode);
         wantShow = show;
         if (show && !keyboardUp) showPanel(); else hidePanel();
+    }
+
+    /** 그 앱이 화면 대부분을 덮는 진짜 화면(액티비티 또는 큰 창)인지 */
+    private boolean isBigWindow(String pkg, CharSequence cls) {
+        if (cls != null) {
+            try { getPackageManager().getActivityInfo(new ComponentName(pkg, cls.toString()), 0); return true; }
+            catch (Exception ignored) { }
+        }
+        try {
+            int area = screenW() * screenH();
+            android.graphics.Rect r = new android.graphics.Rect();
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                android.view.accessibility.AccessibilityNodeInfo root = w.getRoot();
+                if (root == null || root.getPackageName() == null) continue;
+                if (!pkg.equals(root.getPackageName().toString())) continue;
+                w.getBoundsInScreen(r);
+                if ((long) r.width() * r.height() > area * 0.5) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return true; // 모르면 안전하게 숨김
+        }
     }
 
     // 키보드가 올라오면 잠깐 숨었다가, 내려가면 다시 나타남
@@ -183,7 +207,6 @@ public class PanelService extends AccessibilityService {
         if (!attached) return;
         try { wm.removeView(root); } catch (Exception ignored) { }
         attached = false;
-        if (web != null) { web.onPause(); }
     }
 
     void rebuild() {
@@ -465,7 +488,19 @@ public class PanelService extends AccessibilityService {
             s.setLoadWithOverviewMode(true);
             s.setUseWideViewPort(true);
             web.setBackgroundColor(Color.BLACK);
-            web.setWebViewClient(new WebViewClient());
+            web.setWebViewClient(new WebViewClient() {
+                @Override
+                public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
+                    String u = req.getUrl().toString();
+                    for (String bad : AD_HOSTS) if (u.contains(bad))
+                        return new android.webkit.WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                    return null;
+                }
+                @Override public void onPageFinished(WebView v, String url) {
+                    prefs().edit().putString("web_last", url).apply();
+                    v.evaluateJavascript(AD_JS, null);
+                }
+            });
             web.setWebChromeClient(new WebChromeClient() {
                 @Override public void onShowCustomView(View v, CustomViewCallback cb) { enterVideoFull(v, cb); }
                 @Override public void onHideCustomView() { exitVideoFull(false); }
@@ -657,6 +692,21 @@ public class PanelService extends AccessibilityService {
         videoCb = null;
         if (tellWeb && cb != null) { try { cb.onCustomViewHidden(); } catch (Exception ignored) { } }
     }
+
+    private static final String[] AD_HOSTS = {
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com", "google-analytics.com",
+            "/pagead/", "/api/stats/ads", "/get_midroll_", "/ptracking", "adservice.google", "/ad_status",
+            "imasdk.googleapis.com", "/youtubei/v1/log_event"
+    };
+
+    private static final String AD_JS = "(function(){if(window.__sslAd)return;window.__sslAd=1;"
+            + "setInterval(function(){try{"
+            + "var p=document.querySelector('.ad-showing,.ad-interrupting');var v=document.querySelector('video');"
+            + "if(p&&v){v.muted=true;if(isFinite(v.duration)&&v.duration>0)v.currentTime=v.duration;v.playbackRate=16;}"
+            + "else if(v&&v.playbackRate==16){v.playbackRate=1;v.muted=false;}"
+            + "var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.ytp-ad-skip-button-container button');if(b)b.click();"
+            + "document.querySelectorAll('ytm-promoted-sparkles-web-renderer,ytm-companion-ad-renderer,ad-slot-renderer,ytm-promoted-video-renderer,ytm-ad-slot-renderer,.ytd-ad-slot-renderer,ytm-display-ad-renderer').forEach(function(e){e.remove()});"
+            + "}catch(e){}},400);})();";
 
     private void openWeb(String url) {
         prefs().edit().putString("web_last", url).apply();
