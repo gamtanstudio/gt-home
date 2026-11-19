@@ -10,8 +10,8 @@ android {
         applicationId "com.gtman.home"
         minSdk 29
         targetSdk 34
-        versionCode 15
-        versionName "3.7"
+        versionCode 16
+        versionName "3.8"
     }
 
     signingConfigs {
