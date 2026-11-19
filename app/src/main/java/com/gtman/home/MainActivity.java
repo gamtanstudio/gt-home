@@ -316,12 +316,24 @@ public class MainActivity extends Activity {
                 : pick >= 0 ? "이 칸에 넣을 앱" : "전체 앱");
         top.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         if (pick >= 0 && pick < 100) {
-            top.addView(small("◧ 반반으로 저장", v -> showApps(100 + pick)));
             top.addView(small("칸 비우기", v -> {
                 prefs().edit().remove("slot_" + pick).apply(); showHome(); }));
         }
         top.addView(small("닫기", v -> showHome()));
         box.addView(top);
+        if (pick >= 0 && pick < 100) {
+            TextView sp = new TextView(this);
+            sp.setText("◧   두 앱 반반으로 저장하기");
+            sp.setTextColor(Color.WHITE);
+            sp.setTextSize(19);
+            sp.setGravity(Gravity.CENTER);
+            sp.setPadding(dp(20), dp(16), dp(20), dp(16));
+            sp.setBackground(round(Color.parseColor("#3D6FE0"), dp(18)));
+            sp.setOnClickListener(v -> showApps(100 + pick));
+            LinearLayout.LayoutParams spl = new LinearLayout.LayoutParams(-1, -2);
+            spl.topMargin = dp(14);
+            box.addView(sp, spl);
+        }
 
         final List<ResolveInfo> apps = loadApps();
         final PackageManager pm = getPackageManager();
