@@ -256,15 +256,15 @@ public class PanelService extends AccessibilityService {
     private void makeParams() {
         int top = statusBarH();
         lp = new WindowManager.LayoutParams(
-                panelWidth(), screenH() - top - (mode == MODE_WEB ? 0 : dp(prefs().getInt("bottom_gap", 84))),
+                panelWidth(), screenH() - top - dp(prefs().getInt("top_gap", 72)) - dp(prefs().getInt("bottom_gap", 84)),
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 (mode == MODE_WEB ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                         | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | Gravity.END;
-        lp.x = 0;
-        lp.y = top;
+        lp.x = dp(prefs().getInt("right_gap", 72));   // 네이버 오른쪽 버튼·속도 표시가 보이게
+        lp.y = top + dp(prefs().getInt("top_gap", 72));
     }
 
     // ------------------------------------------------------------------

@@ -192,7 +192,9 @@ public class MainActivity extends Activity {
         list.addView(row("패널 폭 처음대로", "", v -> {
             prefs().edit().remove("panel_w").remove("web_w").apply(); toast("다시 기본 폭으로 했어요"); }));
         list.addView(row("음악 앱", musicName(), v -> showApps(-3)));
-        list.addView(row("패널 아래 빈 공간 (네비 버튼용)", prefs().getInt("bottom_gap", 84) + "", v -> chooseGap()));
+        list.addView(row("패널 오른쪽 여백", prefs().getInt("right_gap", 72) + "", v -> chooseGapFor("right_gap", "패널 오른쪽 여백")));
+        list.addView(row("패널 위 여백", prefs().getInt("top_gap", 72) + "", v -> chooseGapFor("top_gap", "패널 위 여백")));
+        list.addView(row("패널 아래 여백", prefs().getInt("bottom_gap", 84) + "", v -> chooseGapFor("bottom_gap", "패널 아래 여백")));
         list.addView(row("사진 넘김 간격", prefs().getInt("interval", 15) + "초", v -> chooseInterval()));
         list.addView(row("사진 앨범 연결 (휴대폰 업로드)", prefs().getString("token", null) == null ? "안 됨" : "연결됨", v -> askToken()));
         list.addView(row("인터넷 첫 화면", prefs().getString("web_home", "https://m.naver.com/"), v -> askWebHome()));
@@ -242,11 +244,11 @@ public class MainActivity extends Activity {
         catch (Exception e) { return "없음"; }
     }
 
-    private void chooseGap() {
-        final int[] vals = {0, 60, 84, 110, 140};
-        new AlertDialog.Builder(this).setTitle("패널 아래 빈 공간")
-                .setItems(new String[]{"0 (끝까지)", "60", "84", "110", "140"}, (d, w) -> {
-                    prefs().edit().putInt("bottom_gap", vals[w]).apply(); showSettings(); })
+    private void chooseGapFor(String key, String title) {
+        final int[] vals = {0, 24, 48, 72, 96, 120, 150};
+        new AlertDialog.Builder(this).setTitle(title)
+                .setItems(new String[]{"0 (끝까지)", "24", "48", "72", "96", "120", "150"}, (d, w) -> {
+                    prefs().edit().putInt(key, vals[w]).apply(); showSettings(); })
                 .show();
     }
 
