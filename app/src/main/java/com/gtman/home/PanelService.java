@@ -251,6 +251,7 @@ public class PanelService extends AccessibilityService {
 
     void hidePanel() {
         exitVideoFull(true);
+        parkWeb();
         if (!attached) return;
         try { wm.removeView(root); } catch (Exception ignored) { }
         attached = false;
@@ -322,6 +323,7 @@ public class PanelService extends AccessibilityService {
 
     private void build() {
         makeParams();
+        if (mode != MODE_WEB) parkWeb();
         root = new FrameLayout(this);
         if (mode == MODE_BUBBLE) { root.addView(buildBubble(), new FrameLayout.LayoutParams(-1, -1)); return; }
 
@@ -596,7 +598,11 @@ public class PanelService extends AccessibilityService {
             s.setLoadWithOverviewMode(true);
             s.setUseWideViewPort(true);
             web.setBackgroundColor(Color.BLACK);
+            web.addJavascriptInterface(new WebBridge(), "GT");
             web.setWebViewClient(new WebViewClient() {
+                @Override public void onPageStarted(WebView v, String url, Bitmap fav) {
+                    v.evaluateJavascript(KEEP_JS, null);
+                }
                 @Override
                 public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest req) {
                     String u = req.getUrl().toString();
@@ -606,6 +612,7 @@ public class PanelService extends AccessibilityService {
                 }
                 @Override public void onPageFinished(WebView v, String url) {
                     prefs().edit().putString("web_last", url).apply();
+                    v.evaluateJavascript(KEEP_JS, null);
                     v.evaluateJavascript(AD_JS, null);
                 }
             });
@@ -616,6 +623,7 @@ public class PanelService extends AccessibilityService {
             web.loadUrl(prefs().getString("web_last", "https://m.youtube.com/"));
         } else {
             if (web.getParent() != null) ((android.view.ViewGroup) web.getParent()).removeView(web);
+            removeHolder();
             web.onResume();
         }
         FrameLayout box = new FrameLayout(this);
@@ -665,6 +673,7 @@ public class PanelService extends AccessibilityService {
         media.addView(mPlay);
         media.addView(mediaBtn("⏭", KeyEvent.KEYCODE_MEDIA_NEXT));
         txt.setOnClickListener(v -> {
+            if (webIsMedia()) { setMode(MODE_WEB); return; }
             if (!mediaAllowed()) { openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS); return; }
             ComponentName app = resolve(this, prefs().getString("music_app", null));
             if (app != null) launchFull(this, app); else openHome("music", -1);
@@ -722,6 +731,13 @@ public class PanelService extends AccessibilityService {
 
     private void refreshMedia() {
         if (mTitle == null) return;
+        if (webIsMedia()) {
+            mTitle.setText(webTitle.isEmpty() ? "유튜브" : webTitle);
+            mArtist.setText("패널 유튜브");
+            mArt.setImageBitmap(web.getFavicon());
+            if (mPlay != null) mPlay.setText(webPlaying ? "⏸" : "▶");
+            return;
+        }
         if (!mediaAllowed()) {
             mTitle.setText("음악");
             mArtist.setText("눌러서 곡 제목 보이게 하기");
@@ -819,6 +835,84 @@ public class PanelService extends AccessibilityService {
             + "document.querySelectorAll('ytm-promoted-sparkles-web-renderer,ytm-companion-ad-renderer,ad-slot-renderer,ytm-promoted-video-renderer,ytm-ad-slot-renderer,.ytd-ad-slot-renderer,ytm-display-ad-renderer').forEach(function(e){e.remove()});"
             + "}catch(e){}},400);})();";
 
+    // 페이지가 "안 보인다"고 느끼지 않게 해서, 패널을 접거나 홈으로 나가도 소리가 계속 나오게
+    private static final String KEEP_JS = "(function(){if(window.__sslKeep)return;window.__sslKeep=1;"
+            + "try{Object.defineProperty(document,'hidden',{get:function(){return false},configurable:true});"
+            + "Object.defineProperty(document,'visibilityState',{get:function(){return 'visible'},configurable:true});"
+            + "Object.defineProperty(document,'webkitHidden',{get:function(){return false},configurable:true});}catch(e){}"
+            + "var stop=function(e){e.stopImmediatePropagation();};"
+            + "window.addEventListener('visibilitychange',stop,true);document.addEventListener('visibilitychange',stop,true);"
+            + "window.addEventListener('webkitvisibilitychange',stop,true);"
+            + "window.addEventListener('pagehide',stop,true);window.addEventListener('blur',stop,true);"
+            + "setInterval(function(){try{var v=document.querySelector('video');"
+            + "if(window.GT)GT.st(!!(v&&!v.paused&&!v.ended),(document.title||'').replace(/ - YouTube$/,''));"
+            + "}catch(e){}},1500);})();";
+
+    public class WebBridge {
+        @android.webkit.JavascriptInterface
+        public void st(boolean playing, String title) {
+            ui.post(() -> {
+                boolean ch = playing != webPlaying || !String.valueOf(title).equals(webTitle);
+                webPlaying = playing; webTitle = title;
+                if (ch) refreshMedia();
+            });
+        }
+    }
+
+    private boolean webPlaying = false;
+    private String webTitle = null;
+    private FrameLayout holder;
+
+    /** 패널 밖에서도 영상·음악이 끊기지 않게 작은 보이지 않는 창에 맡겨 둠 */
+    private void parkWeb() {
+        if (web == null) return;
+        if (holder != null && web.getParent() == holder) return;
+        try {
+            if (holder == null) {
+                holder = new FrameLayout(this);
+                WindowManager.LayoutParams h = new WindowManager.LayoutParams(2, 2,
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT);
+                h.gravity = Gravity.TOP | Gravity.START;
+                h.x = 0; h.y = 0;
+                holder.setAlpha(0.01f);
+                wm.addView(holder, h);
+            }
+            if (web.getParent() != null) ((android.view.ViewGroup) web.getParent()).removeView(web);
+            holder.addView(web, new FrameLayout.LayoutParams(dp(320), dp(240)));
+            web.onResume();
+            web.resumeTimers();
+        } catch (Exception ignored) { }
+    }
+
+    private void removeHolder() {
+        if (holder == null) return;
+        try { holder.removeAllViews(); wm.removeView(holder); } catch (Exception ignored) { }
+        holder = null;
+    }
+
+    /** 음악 카드가 패널 유튜브를 다룰 차례인지 */
+    private boolean webIsMedia() {
+        if (web == null || webTitle == null) return false;
+        PlaybackState st = ctrl == null ? null : ctrl.getPlaybackState();
+        boolean other = st != null && st.getState() == PlaybackState.STATE_PLAYING;
+        return webPlaying || !other && ctrl == null;
+    }
+
+    private void webMedia(int code) {
+        if (web == null) return;
+        String js = code == KeyEvent.KEYCODE_MEDIA_NEXT
+                ? "var v=document.querySelector('video');if(v&&isFinite(v.duration))v.currentTime=v.duration-0.3;"
+                : code == KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                ? "var v=document.querySelector('video');if(v)v.currentTime=0;"
+                : "var v=document.querySelector('video');if(v){if(v.paused)v.play();else v.pause();}";
+        web.evaluateJavascript("(function(){try{" + js + "}catch(e){}})();", null);
+        ui.postDelayed(() -> { if (web != null) web.evaluateJavascript(
+                "(function(){var v=document.querySelector('video');if(window.GT)GT.st(!!(v&&!v.paused&&!v.ended),(document.title||'').replace(/ - YouTube$/,''));})();", null); }, 400);
+    }
+
     private void openWeb(String url) {
         prefs().edit().putString("web_last", url).apply();
         if (web != null) web.loadUrl(url);
@@ -873,6 +967,7 @@ public class PanelService extends AccessibilityService {
         t.setGravity(Gravity.CENTER);
         t.setLayoutParams(new LinearLayout.LayoutParams(dp(46), dp(44)));
         t.setOnClickListener(v -> {
+            if (webIsMedia()) { webMedia(code); return; }
             if (ctrl != null) {
                 try {
                     MediaController.TransportControls tc = ctrl.getTransportControls();
