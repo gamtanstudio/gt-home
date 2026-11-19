@@ -45,6 +45,7 @@ import java.util.Map;
 public class MainActivity extends Activity {
 
     static boolean homeMode = false;
+    static boolean otherScreen = false; // 설정·앱 고르기 화면이 떠 있음
 
     private static final int BG = Color.parseColor("#07090D");
     private static final int CARD = Color.parseColor("#161B25");
@@ -121,6 +122,7 @@ public class MainActivity extends Activity {
 
     private void showHome() {
         homeMode = true;
+        otherScreen = false;
         LinearLayout box = page();
         box.setGravity(Gravity.CENTER);
         ComponentName nav = PanelService.navApp(this);
@@ -144,6 +146,7 @@ public class MainActivity extends Activity {
     // ======================================================================
 
     private void showSetup() {
+        otherScreen = true;
         LinearLayout box = page();
         box.setGravity(Gravity.CENTER);
         box.addView(title("싼슬라 패널 켜기"));
@@ -164,6 +167,7 @@ public class MainActivity extends Activity {
     // ======================================================================
 
     private void showSettings() {
+        otherScreen = true;
         LinearLayout box = page();
         box.addView(title("싼슬라 설정"));
         ComponentName nav = PanelService.navApp(this);
@@ -290,6 +294,7 @@ public class MainActivity extends Activity {
     /** pick: -1 그냥 실행, -2 네비 고르기, 0~5 패널 칸 */
     private void showApps(int pick) {
         homeMode = false;
+        otherScreen = true;
         LinearLayout box = page();
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);

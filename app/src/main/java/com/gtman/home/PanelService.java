@@ -139,6 +139,12 @@ public class PanelService extends AccessibilityService {
             // 싼슬라 자신의 패널·영상 창 같은 건 무시하고, 홈 화면일 때만 판단
             CharSequence cls = e.getClassName();
             if (cls == null || !cls.toString().endsWith("MainActivity")) return;
+            // 홈 버튼으로 싼슬라 홈이 잠깐 지나갈 때는 패널을 내리지 않음 (영상이 끊기지 않게).
+            // 설정·앱 고르기 화면은 열 때 따로 숨김.
+            if (MainActivity.otherScreen) { hidePanel(); return; }
+            wantShow = true;
+            if (!keyboardUp) showPanel();
+            return;
         }
         ComponentName nav = navApp(this);
         boolean isNavOrHome = (nav != null && pkg.equals(nav.getPackageName())) || pkg.equals(getPackageName());
@@ -824,6 +830,7 @@ public class PanelService extends AccessibilityService {
     }
 
     private void openHome(String what, int slot) {
+        MainActivity.otherScreen = true;
         hidePanel();
         Intent i = new Intent(this, MainActivity.class);
         i.putExtra("mode", what);
