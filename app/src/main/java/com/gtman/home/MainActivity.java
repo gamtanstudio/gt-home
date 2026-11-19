@@ -135,10 +135,15 @@ public class MainActivity extends Activity {
         }
         box.addView(button("네비 열기", v -> PanelService.launchFull(this, nav)));
         setContentView(box);
+        int wait = 250;
+        if (PanelService.inst != null && PanelService.inst.inSplit()) {   // 반반이면 먼저 풀고
+            PanelService.inst.exitSplit();
+            wait = 800;
+        }
         if (PanelService.inst != null) PanelService.inst.showPanel();
         if (prefs().getBoolean("auto_nav", true)) ui.postDelayed(() -> {
             if (homeMode) PanelService.launchFull(this, nav);
-        }, 250);
+        }, wait);
     }
 
     // ======================================================================
@@ -297,17 +302,24 @@ public class MainActivity extends Activity {
     // 전체 앱 / 앱 고르기
     // ======================================================================
 
-    /** pick: -1 그냥 실행, -2 네비 고르기, 0~5 패널 칸 */
+    /** pick: -1 그냥 실행, -2 네비 고르기, -3 음악, 0~5 패널 칸, 100+칸 분할 왼쪽, 200+칸 분할 오른쪽 */
+    private String splitLeft = null;
+
     private void showApps(int pick) {
         homeMode = false;
         otherScreen = true;
         LinearLayout box = page();
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t = title(pick == -2 ? "네비 고르기" : pick == -3 ? "음악 앱 고르기" : pick >= 0 ? "이 칸에 넣을 앱" : "전체 앱");
+        TextView t = title(pick == -2 ? "네비 고르기" : pick == -3 ? "음악 앱 고르기"
+                : pick >= 200 ? "오른쪽 반에 띄울 앱" : pick >= 100 ? "왼쪽 반에 띄울 앱"
+                : pick >= 0 ? "이 칸에 넣을 앱" : "전체 앱");
         top.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
-        if (pick >= 0) top.addView(small("칸 비우기", v -> {
-            prefs().edit().remove("slot_" + pick).apply(); showHome(); }));
+        if (pick >= 0 && pick < 100) {
+            top.addView(small("◧ 반반으로 저장", v -> showApps(100 + pick)));
+            top.addView(small("칸 비우기", v -> {
+                prefs().edit().remove("slot_" + pick).apply(); showHome(); }));
+        }
         top.addView(small("닫기", v -> showHome()));
         box.addView(top);
 
@@ -355,6 +367,14 @@ public class MainActivity extends Activity {
             } else if (pick == -3) {
                 prefs().edit().putString("music_app", cn.flattenToString()).apply();
                 PanelService.launchFull(this, cn);
+            } else if (pick >= 200) {
+                if (splitLeft != null) prefs().edit().putString("slot_" + (pick - 200),
+                        "split:" + splitLeft + "|" + cn.flattenToString()).apply();
+                splitLeft = null;
+                showHome();
+            } else if (pick >= 100) {
+                splitLeft = cn.flattenToString();
+                showApps(pick + 100);
             } else if (pick >= 0) {
                 prefs().edit().putString("slot_" + pick, cn.flattenToString()).apply();
                 showHome();

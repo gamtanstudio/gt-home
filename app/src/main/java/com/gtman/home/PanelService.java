@@ -128,7 +128,7 @@ public class PanelService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
-        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED) { checkKeyboard(); return; }
+        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED) { checkSplit(); checkKeyboard(); return; }
         if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence p = e.getPackageName();
         if (p == null) return;
@@ -146,6 +146,8 @@ public class PanelService extends AccessibilityService {
             if (!keyboardUp) showPanel();
             return;
         }
+        lastPkg = pkg;
+        if (splitting || inSplit()) { wantShow = false; hidePanel(); return; } // 반반 화면일 땐 패널 숨김
         ComponentName nav = navApp(this);
         boolean isNavOrHome = (nav != null && pkg.equals(nav.getPackageName())) || pkg.equals(getPackageName());
         if (!isNavOrHome && !isBigWindow(pkg, e.getClassName())) return; // 볼륨 창 같은 작은 팝업은 무시
@@ -179,6 +181,22 @@ public class PanelService extends AccessibilityService {
 
     // 키보드가 올라오면 잠깐 숨었다가, 내려가면 다시 나타남
     private boolean wantShow = false, keyboardUp = false;
+
+    private String lastPkg = "";
+
+    // 반반이 끝나고 네비만 남으면 패널을 다시 띄움
+    private void checkSplit() {
+        boolean now = inSplit();
+        if (now == wasSplit) return;
+        wasSplit = now;
+        if (now) { wantShow = false; hidePanel(); return; }
+        if (splitting) return;
+        ComponentName nav = navApp(this);
+        if (nav != null && nav.getPackageName().equals(lastPkg)) {
+            wantShow = true;
+            ui.postDelayed(() -> { if (wantShow && !keyboardUp && !inSplit()) showPanel(); }, 400);
+        }
+    }
 
     private void checkKeyboard() {
         boolean up = false;
@@ -876,7 +894,9 @@ public class PanelService extends AccessibilityService {
         LinearLayout t = new LinearLayout(this);
         t.setOrientation(LinearLayout.VERTICAL);
         t.setGravity(Gravity.CENTER);
-        ComponentName cn = resolve(this, prefs().getString("slot_" + slot, null));
+        String raw = prefs().getString("slot_" + slot, null);
+        if (raw != null && raw.startsWith("split:")) return splitTile(t, slot, raw, pm, label);
+        ComponentName cn = resolve(this, raw);
         ActivityInfo info = null;
         if (cn != null) { try { info = pm.getActivityInfo(cn, 0); } catch (Exception ignored) { } }
         if (info == null) {
@@ -908,6 +928,98 @@ public class PanelService extends AccessibilityService {
         t.setOnLongClickListener(v -> { openHome("pick", slot); return true; });
         return t;
     }
+
+    // ------------------------------------------------------------------
+    // 분할 칸: 두 앱을 저장해 두었다가 한 번에 반반으로
+    // ------------------------------------------------------------------
+
+    private View splitTile(LinearLayout t, int slot, String raw, PackageManager pm, boolean label) {
+        String[] ab = raw.substring(6).split("\\|");
+        final ComponentName a = ab.length > 0 ? resolve(this, ab[0]) : null;
+        final ComponentName b = ab.length > 1 ? resolve(this, ab[1]) : null;
+        LinearLayout pair = new LinearLayout(this);
+        pair.setGravity(Gravity.CENTER);
+        pair.setPadding(dp(7), dp(5), dp(7), dp(5));
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(Color.parseColor("#22FFFFFF"));
+        bg.setCornerRadius(dp(14));
+        bg.setStroke(dp(1), Color.parseColor("#33FFFFFF"));
+        pair.setBackground(bg);
+        pair.addView(splitIcon(a, pm), new LinearLayout.LayoutParams(dp(34), dp(34)));
+        View bar = new View(this);
+        bar.setBackgroundColor(Color.parseColor("#88FFFFFF"));
+        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(dp(2), dp(26));
+        bl.leftMargin = dp(5); bl.rightMargin = dp(5);
+        pair.addView(bar, bl);
+        pair.addView(splitIcon(b, pm), new LinearLayout.LayoutParams(dp(34), dp(34)));
+        t.addView(pair, new LinearLayout.LayoutParams(-2, dp(50)));
+        if (label) {
+            TextView l = new TextView(this);
+            l.setText(shortName(a, pm) + " · " + shortName(b, pm));
+            l.setTextColor(Color.parseColor("#C9D1DC"));
+            l.setTextSize(12);
+            l.setSingleLine(true);
+            l.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            l.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(-1, -2);
+            ll.topMargin = dp(6);
+            t.addView(l, ll);
+        }
+        t.setOnClickListener(v -> { if (a != null && b != null) launchSplit(a, b); else openHome("pick", slot); });
+        t.setOnLongClickListener(v -> { openHome("pick", slot); return true; });
+        return t;
+    }
+
+    private ImageView splitIcon(ComponentName cn, PackageManager pm) {
+        ImageView iv = new ImageView(this);
+        try { iv.setImageDrawable(pm.getActivityInfo(cn, 0).loadIcon(pm)); } catch (Exception e) { iv.setAlpha(0.3f); }
+        return iv;
+    }
+
+    private String shortName(ComponentName cn, PackageManager pm) {
+        try {
+            String n = pm.getActivityInfo(cn, 0).loadLabel(pm).toString().trim();
+            int sp = n.indexOf(' ');
+            return sp > 0 ? n.substring(0, sp) : n;
+        } catch (Exception e) { return "?"; }
+    }
+
+    /** 화면이 지금 반반으로 나뉘어 있는지 (가운데 막대가 있는지) */
+    boolean inSplit() {
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows())
+                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER) return true;
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    void exitSplit() {
+        if (inSplit()) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+    }
+
+    private void launchSplit(ComponentName a, ComponentName b) {
+        splitting = true;
+        wantShow = false;
+        hidePanel();
+        int wait = 0;
+        if (inSplit()) { performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN); wait = 700; }
+        ui.postDelayed(() -> {
+            launchFull(this, a);                                   // 왼쪽 앱을 먼저 맨 앞으로
+            ui.postDelayed(() -> {
+                performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN); // 그 앱을 왼쪽 반으로
+                ui.postDelayed(() -> {
+                    Intent i = new Intent(Intent.ACTION_MAIN);
+                    i.addCategory(Intent.CATEGORY_LAUNCHER);
+                    i.setComponent(b);
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
+                            | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                    try { startActivity(i); } catch (Exception ignored) { }
+                    ui.postDelayed(() -> splitting = false, 1500);
+                }, 900);
+            }, 800);
+        }, wait);
+    }
+    private boolean splitting = false, wasSplit = false;
 
     private void openHome(String what, int slot) {
         MainActivity.otherScreen = true;
