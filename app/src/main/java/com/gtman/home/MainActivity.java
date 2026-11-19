@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
         if ("apps".equals(mode)) { homeMode = false; showApps(-1); return; }
         if ("pick".equals(mode)) { homeMode = false; showApps(slot); return; }
         if ("nav".equals(mode)) { homeMode = false; showApps(-2); return; }
+        if ("music".equals(mode)) { homeMode = false; showApps(-3); return; }
         showHome();
     }
 
@@ -186,6 +187,8 @@ public class MainActivity extends Activity {
             prefs().edit().putBoolean("panel_off", !off).apply(); showSettings(); }));
         list.addView(row("패널 폭 처음대로", "", v -> {
             prefs().edit().remove("panel_w").remove("web_w").apply(); toast("다시 기본 폭으로 했어요"); }));
+        list.addView(row("음악 앱", musicName(), v -> showApps(-3)));
+        list.addView(row("패널 아래 빈 공간 (네비 버튼용)", prefs().getInt("bottom_gap", 84) + "", v -> chooseGap()));
         list.addView(row("사진 넘김 간격", prefs().getInt("interval", 15) + "초", v -> chooseInterval()));
         list.addView(row("사진 앨범 연결 (휴대폰 업로드)", prefs().getString("token", null) == null ? "안 됨" : "연결됨", v -> askToken()));
         list.addView(row("인터넷 첫 화면", prefs().getString("web_home", "https://m.naver.com/"), v -> askWebHome()));
@@ -226,6 +229,21 @@ public class MainActivity extends Activity {
         lp.bottomMargin = dp(8);
         r.setLayoutParams(lp);
         return r;
+    }
+
+    private String musicName() {
+        ComponentName c = PanelService.resolve(this, prefs().getString("music_app", null));
+        if (c == null) return "없음";
+        try { return String.valueOf(getPackageManager().getActivityInfo(c, 0).loadLabel(getPackageManager())); }
+        catch (Exception e) { return "없음"; }
+    }
+
+    private void chooseGap() {
+        final int[] vals = {0, 60, 84, 110, 140};
+        new AlertDialog.Builder(this).setTitle("패널 아래 빈 공간")
+                .setItems(new String[]{"0 (끝까지)", "60", "84", "110", "140"}, (d, w) -> {
+                    prefs().edit().putInt("bottom_gap", vals[w]).apply(); showSettings(); })
+                .show();
     }
 
     private void chooseInterval() {
@@ -275,7 +293,7 @@ public class MainActivity extends Activity {
         LinearLayout box = page();
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView t = title(pick == -2 ? "네비 고르기" : pick >= 0 ? "이 칸에 넣을 앱" : "전체 앱");
+        TextView t = title(pick == -2 ? "네비 고르기" : pick == -3 ? "음악 앱 고르기" : pick >= 0 ? "이 칸에 넣을 앱" : "전체 앱");
         top.addView(t, new LinearLayout.LayoutParams(0, -2, 1f));
         if (pick >= 0) top.addView(small("칸 비우기", v -> {
             prefs().edit().remove("slot_" + pick).apply(); showHome(); }));
@@ -323,6 +341,9 @@ public class MainActivity extends Activity {
             if (pick == -2) {
                 prefs().edit().putString("nav", cn.flattenToString()).apply();
                 showHome();
+            } else if (pick == -3) {
+                prefs().edit().putString("music_app", cn.flattenToString()).apply();
+                PanelService.launchFull(this, cn);
             } else if (pick >= 0) {
                 prefs().edit().putString("slot_" + pick, cn.flattenToString()).apply();
                 showHome();

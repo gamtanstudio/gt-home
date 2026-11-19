@@ -250,7 +250,7 @@ public class PanelService extends AccessibilityService {
     private void makeParams() {
         int top = statusBarH();
         lp = new WindowManager.LayoutParams(
-                panelWidth(), screenH() - top,
+                panelWidth(), screenH() - top - (mode == MODE_WEB ? 0 : dp(prefs().getInt("bottom_gap", 84))),
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 (mode == MODE_WEB ? 0 : WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -561,8 +561,11 @@ public class PanelService extends AccessibilityService {
         media.addView(mPlay);
         media.addView(mediaBtn("⏭", KeyEvent.KEYCODE_MEDIA_NEXT));
         txt.setOnClickListener(v -> {
-            if (!mediaAllowed()) openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+            if (!mediaAllowed()) { openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS); return; }
+            ComponentName app = resolve(this, prefs().getString("music_app", null));
+            if (app != null) launchFull(this, app); else openHome("music", -1);
         });
+        txt.setOnLongClickListener(v -> { openHome("music", -1); return true; });
         refreshMedia();
         return media;
     }
