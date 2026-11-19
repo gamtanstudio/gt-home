@@ -70,7 +70,7 @@ public class PanelService extends AccessibilityService {
 
     static PanelService inst;
 
-    static final int MODE_FULL = 0, MODE_MINI = 1, MODE_WEB = 2;
+    static final int MODE_FULL = 0, MODE_MINI = 1, MODE_WEB = 2, MODE_BUBBLE = 3;
 
     private static final int GLASS = Color.parseColor("#E6111620");
     private static final int CARD = Color.parseColor("#1AFFFFFF");
@@ -265,6 +265,12 @@ public class PanelService extends AccessibilityService {
         lp.gravity = Gravity.TOP | Gravity.END;
         lp.x = dp(prefs().getInt("right_gap", 72));   // 네이버 오른쪽 버튼·속도 표시가 보이게
         lp.y = top + dp(prefs().getInt("top_gap", 72));
+        if (mode == MODE_BUBBLE) {
+            lp.width = dp(76);
+            lp.height = dp(76);
+            lp.x = dp(prefs().getInt("right_gap", 72));
+            lp.y = Math.max(top, Math.min(prefs().getInt("bubble_y", top + dp(160)), screenH() - dp(90)));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -274,6 +280,7 @@ public class PanelService extends AccessibilityService {
     private void build() {
         makeParams();
         root = new FrameLayout(this);
+        if (mode == MODE_BUBBLE) { root.addView(buildBubble(), new FrameLayout.LayoutParams(-1, -1)); return; }
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -364,6 +371,7 @@ public class PanelService extends AccessibilityService {
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
         bottom.addView(textBtn("◀  접기", v -> setMode(MODE_MINI)));
+        bottom.addView(textBtn("●  숨기기", v -> setMode(MODE_BUBBLE)));
         View fill = new View(this);
         bottom.addView(fill, new LinearLayout.LayoutParams(0, 1, 1f));
         bottom.addView(textBtn("전체 앱", v -> openHome("apps", -1)));
@@ -460,8 +468,55 @@ public class PanelService extends AccessibilityService {
         View fill = new View(this);
         col.addView(fill, new LinearLayout.LayoutParams(1, 0, 1f));
         if (web != null) col.addView(textBtn("▶ 영상", v -> setMode(MODE_WEB)));
+        col.addView(textBtn("● 숨기기", v -> setMode(MODE_BUBBLE)));
         col.addView(textBtn("펼치기 ▶", v -> setMode(MODE_FULL)));
         return col;
+    }
+
+    // ---------- D: 동그라미 (네비만 볼 때) ----------
+    private View buildBubble() {
+        FrameLayout b = new FrameLayout(this);
+        b.setPadding(dp(4), dp(4), dp(4), dp(4));
+        ImageView face = new ImageView(this);
+        face.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        face.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
+        });
+        face.setClipToOutline(true);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setColor(Color.parseColor("#CC111620"));
+        ring.setStroke(dp(2), Color.parseColor("#AAFFFFFF"));
+        b.setBackground(ring);
+        if (!photos.isEmpty()) {
+            Bitmap bm = decode(photos.get(Math.max(0, photoIdx) % photos.size()), 300);
+            if (bm != null) face.setImageBitmap(bm);
+        }
+        face.setAlpha(0.92f);
+        b.addView(face, new FrameLayout.LayoutParams(-1, -1));
+        // 누르면 펼치고, 끌면 위아래로 옮김
+        b.setOnTouchListener(new View.OnTouchListener() {
+            float sy; int startY; boolean moved;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: sy = e.getRawY(); startY = lp.y; moved = false; return true;
+                    case MotionEvent.ACTION_MOVE:
+                        int dy = Math.round(e.getRawY() - sy);
+                        if (Math.abs(dy) > dp(8)) moved = true;
+                        if (moved) {
+                            lp.y = Math.max(statusBarH(), Math.min(startY + dy, screenH() - dp(90)));
+                            try { wm.updateViewLayout(root, lp); } catch (Exception ignored) { }
+                        }
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        if (moved) prefs().edit().putInt("bubble_y", lp.y).apply();
+                        else setMode(MODE_FULL);
+                        return true;
+                }
+                return false;
+            }
+        });
+        return b;
     }
 
     // ---------- C: 패널 안 유튜브 / 인터넷 ----------
