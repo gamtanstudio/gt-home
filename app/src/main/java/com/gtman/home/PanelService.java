@@ -128,6 +128,7 @@ public class PanelService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
+        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOWS_CHANGED) { checkKeyboard(); return; }
         if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence p = e.getPackageName();
         if (p == null) return;
@@ -142,7 +143,24 @@ public class PanelService extends AccessibilityService {
         ComponentName nav = navApp(this);
         boolean show = (nav != null && pkg.equals(nav.getPackageName()))
                 || (pkg.equals(getPackageName()) && MainActivity.homeMode);
-        if (show) showPanel(); else hidePanel();
+        wantShow = show;
+        if (show && !keyboardUp) showPanel(); else hidePanel();
+    }
+
+    // 키보드가 올라오면 잠깐 숨었다가, 내려가면 다시 나타남
+    private boolean wantShow = false, keyboardUp = false;
+
+    private void checkKeyboard() {
+        boolean up = false;
+        try {
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                if (w.getType() == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD) { up = true; break; }
+            }
+        } catch (Exception ignored) { }
+        if (up == keyboardUp) return;
+        keyboardUp = up;
+        if (up) hidePanel();
+        else if (wantShow) ui.postDelayed(() -> { if (!keyboardUp && wantShow) showPanel(); }, 300);
     }
 
     private String defaultIme() {
