@@ -133,6 +133,7 @@ public class PanelService extends AccessibilityService {
         CharSequence p = e.getPackageName();
         if (p == null) return;
         String pkg = p.toString();
+        if (!pkg.equals("com.android.systemui")) markTransition();
         if (pkg.equals("com.android.systemui") || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 || pkg.equals(defaultIme())) return;
         if (pkg.equals(getPackageName())) {
@@ -250,6 +251,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void hidePanel() {
+        markTransition();
         exitVideoFull(true);
         parkWeb();
         if (!attached) return;
@@ -854,9 +856,28 @@ public class PanelService extends AccessibilityService {
             ui.post(() -> {
                 boolean ch = playing != webPlaying || !String.valueOf(title).equals(webTitle);
                 webPlaying = playing; webTitle = title;
+                if (playing) lastPlayAt = android.os.SystemClock.uptimeMillis();
+                if (!playing && bgKeep && !(attached && mode == MODE_WEB )) resumeWeb();
                 if (ch) refreshMedia();
             });
         }
+    }
+
+    private long lastPlayAt = -100000;
+    private boolean bgKeep = false;   // 화면 바뀔 때 듣고 있던 유튜브는 계속 이어서 재생
+    private static final String RESUME_JS = "(function(){try{var v=document.querySelector('video');if(!v||v.ended)return;"
+            + "if(v.paused){v.play();}else{var t=v.currentTime;setTimeout(function(){if(v.currentTime==t&&!v.paused){v.pause();v.play();}},700);}"
+            + "}catch(e){}})();";
+
+    private void markTransition() {
+        if (web == null) return;
+        if (!webPlaying && android.os.SystemClock.uptimeMillis() - lastPlayAt > 3500) { bgKeep = false; return; }
+        bgKeep = true;
+        for (int d : new int[]{500, 1300, 2500, 4000, 6000}) ui.postDelayed(this::resumeWeb, d);
+    }
+
+    private void resumeWeb() {
+        if (web != null && bgKeep) web.evaluateJavascript(RESUME_JS, null);
     }
 
     private boolean webPlaying = false;
@@ -903,6 +924,7 @@ public class PanelService extends AccessibilityService {
 
     private void webMedia(int code) {
         if (web == null) return;
+        if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) { bgKeep = !webPlaying; if (webPlaying) lastPlayAt = -100000; }
         String js = code == KeyEvent.KEYCODE_MEDIA_NEXT
                 ? "var v=document.querySelector('video');if(v&&isFinite(v.duration))v.currentTime=v.duration-0.3;"
                 : code == KeyEvent.KEYCODE_MEDIA_PREVIOUS
@@ -920,6 +942,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void setMode(int m) {
+        markTransition();
         mode = m;
         boolean was = attached;
         hidePanel();
