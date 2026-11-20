@@ -133,6 +133,14 @@ public class MainActivity extends Activity {
             if (PanelService.inst != null) PanelService.inst.showPanel();
             return;
         }
+        if (PanelService.splitLayout(this) && PanelService.inst != null) {   // 반반: 왼쪽 네비, 오른쪽 싼슬라
+            box.addView(button("반반 열기", v -> PanelService.inst.goSplitHome()));
+            setContentView(box);
+            if (prefs().getBoolean("auto_nav", true)) ui.postDelayed(() -> {
+                if (homeMode && PanelService.inst != null) PanelService.inst.goSplitHome();
+            }, 250);
+            return;
+        }
         box.addView(button("네비 열기", v -> PanelService.launchFull(this, nav)));
         setContentView(box);
         int wait = 250;
@@ -190,6 +198,12 @@ public class MainActivity extends Activity {
         sv.addView(list);
 
         list.addView(row("네비 앱", navName, v -> showApps(-2)));
+        boolean split = PanelService.splitLayout(this);
+        list.addView(row("화면 방식", split ? "반반 (왼쪽 네비)" : "떠 있는 패널", v -> {
+            prefs().edit().putString("layout", split ? "float" : "split").apply();
+            if (PanelService.inst != null) { PanelService.inst.exitSplit(); PanelService.inst.rebuild(); }
+            showSettings();
+        }));
         list.addView(row("홈 누르면 네비 자동 실행", auto ? "켬" : "끔", v -> {
             prefs().edit().putBoolean("auto_nav", !auto).apply(); showSettings(); }));
         list.addView(row("패널 보이기", off ? "끔" : "켬", v -> {

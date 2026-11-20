@@ -133,9 +133,9 @@ public class PanelService extends AccessibilityService {
         CharSequence p = e.getPackageName();
         if (p == null) return;
         String pkg = p.toString();
-        if (!pkg.equals("com.android.systemui")) markTransition();
         if (pkg.equals("com.android.systemui") || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 || pkg.equals(defaultIme())) return;
+        if (splitLayout(this)) { onSplitEvent(pkg, e.getClassName()); return; }
         if (pkg.equals(getPackageName())) {
             // 싼슬라 자신의 패널·영상 창 같은 건 무시하고, 홈 화면일 때만 판단
             CharSequence cls = e.getClassName();
@@ -187,6 +187,7 @@ public class PanelService extends AccessibilityService {
 
     // 반반이 끝나고 네비만 남으면 패널을 다시 띄움
     private void checkSplit() {
+        if (splitLayout(this)) { if (pill != null && inSplit() != pillSplit) showPill(); return; }
         boolean now = inSplit();
         if (now == wasSplit) return;
         wasSplit = now;
@@ -244,14 +245,13 @@ public class PanelService extends AccessibilityService {
     }
 
     void showPanel() {
-        if (prefs().getBoolean("panel_off", false)) { hidePanel(); return; }
+        if (prefs().getBoolean("panel_off", false) || splitLayout(this)) { hidePanel(); return; }
         if (attached) return;
         build();
         try { wm.addView(root, lp); attached = true; } catch (Exception ignored) { }
     }
 
     void hidePanel() {
-        markTransition();
         exitVideoFull(true);
         parkWeb();
         if (!attached) return;
@@ -260,6 +260,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void rebuild() {
+        if (sideHost != null && splitLayout(this)) { buildSide(); return; }
         boolean was = attached;
         hidePanel();
         if (was) showPanel();
@@ -417,8 +418,12 @@ public class PanelService extends AccessibilityService {
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.addView(textBtn("◀  접기", v -> setMode(MODE_MINI)));
-        bottom.addView(textBtn("●  숨기기", v -> setMode(MODE_BUBBLE)));
+        if (building4Side) {
+            bottom.addView(textBtn("⤢  네비 크게", v -> exitSplit()));
+        } else {
+            bottom.addView(textBtn("◀  접기", v -> setMode(MODE_MINI)));
+            bottom.addView(textBtn("●  숨기기", v -> setMode(MODE_BUBBLE)));
+        }
         View fill = new View(this);
         bottom.addView(fill, new LinearLayout.LayoutParams(0, 1, 1f));
         bottom.addView(textBtn("전체 앱", v -> openHome("apps", -1)));
@@ -580,7 +585,8 @@ public class PanelService extends AccessibilityService {
         top.addView(chip("←", v -> { if (web != null && web.canGoBack()) web.goBack(); }));
         View s2 = new View(this);
         top.addView(s2, new LinearLayout.LayoutParams(dp(8), 1));
-        top.addView(chip("작게", v -> setMode(MODE_MINI)));
+        if (building4Side) top.addView(chip("⤢  크게", v -> webBig()));
+        else top.addView(chip("작게", v -> setMode(MODE_MINI)));
         View fill = new View(this);
         top.addView(fill, new LinearLayout.LayoutParams(0, 1, 1f));
         TextClock t = new TextClock(this);
@@ -819,6 +825,7 @@ public class PanelService extends AccessibilityService {
         r.removeAllViews();
         WebChromeClient.CustomViewCallback cb = videoCb;
         videoCb = null;
+        if (webBigOn) { webBigOn = false; ui.post(() -> { if (sideHost != null) buildSide(); }); }
         if (tellWeb && cb != null) { try { cb.onCustomViewHidden(); } catch (Exception ignored) { } }
     }
 
@@ -857,7 +864,6 @@ public class PanelService extends AccessibilityService {
                 boolean ch = playing != webPlaying || !String.valueOf(title).equals(webTitle);
                 webPlaying = playing; webTitle = title;
                 if (playing) lastPlayAt = android.os.SystemClock.uptimeMillis();
-                if (!playing && bgKeep && !(attached && mode == MODE_WEB )) resumeWeb();
                 if (ch) refreshMedia();
             });
         }
@@ -887,6 +893,7 @@ public class PanelService extends AccessibilityService {
     /** 패널 밖에서도 영상·음악이 끊기지 않게 작은 보이지 않는 창에 맡겨 둠 */
     private void parkWeb() {
         if (web == null) return;
+        if (sideHost != null && mode == MODE_WEB && isInside(web, sideHost)) return;
         if (holder != null && web.getParent() == holder) return;
         try {
             if (holder == null) {
@@ -942,7 +949,11 @@ public class PanelService extends AccessibilityService {
     }
 
     void setMode(int m) {
-        markTransition();
+        if (sideHost != null && splitLayout(this)) {
+            mode = (m == MODE_WEB) ? MODE_WEB : MODE_FULL;
+            buildSide();
+            return;
+        }
         mode = m;
         boolean was = attached;
         hidePanel();
@@ -1042,7 +1053,7 @@ public class PanelService extends AccessibilityService {
             t.addView(l, ll);
         }
         final ComponentName target = cn;
-        t.setOnClickListener(v -> launchFull(this, target));
+        t.setOnClickListener(v -> { if (sideHost != null && splitLayout(this)) launchRight(target); else launchFull(this, target); });
         t.setOnLongClickListener(v -> { openHome("pick", slot); return true; });
         return t;
     }
@@ -1138,6 +1149,188 @@ public class PanelService extends AccessibilityService {
         }, wait);
     }
     private boolean splitting = false, wasSplit = false;
+
+    // ------------------------------------------------------------------
+    // 반반 방식: 왼쪽 네비, 오른쪽 싼슬라 화면(SideActivity)
+    // ------------------------------------------------------------------
+
+    static boolean splitLayout(Context c) {
+        return "split".equals(c.getSharedPreferences("gthome", MODE_PRIVATE).getString("layout", "split"));
+    }
+
+    private FrameLayout sideHost;
+    private boolean building4Side = false, webBigOn = false;
+    private String rightPkg = null;
+    private ComponentName rightApp = null;
+    private FrameLayout pill;
+
+    private static boolean isInside(View v, View parent) {
+        android.view.ViewParent p = v.getParent();
+        while (p != null) { if (p == parent) return true; p = p.getParent(); }
+        return false;
+    }
+
+    void attachSide(FrameLayout host) {
+        hidePanel();
+        hidePill();
+        boolean same = sideHost == host && host.getChildCount() > 0;
+        sideHost = host;
+        if (mode != MODE_WEB) mode = MODE_FULL;
+        if (!same) buildSide();
+        // 오른쪽이 잠깐 가려졌다 돌아오면, 듣던 유튜브를 한 번만 이어서 재생
+        if (web != null && android.os.SystemClock.uptimeMillis() - lastPlayAt < 5000) {
+            bgKeep = true;
+            ui.postDelayed(this::resumeWeb, 900);
+            ui.postDelayed(() -> bgKeep = false, 1200);
+        }
+    }
+
+    void detachSide(FrameLayout host) {
+        if (sideHost != host) return;
+        mode = MODE_FULL;
+        parkWeb();
+        host.removeAllViews();
+        sideHost = null;
+    }
+
+    boolean sideBack() {
+        if (mode == MODE_WEB) {
+            if (web != null && web.canGoBack()) web.goBack(); else setMode(MODE_FULL);
+            return true;
+        }
+        return true;
+    }
+
+    private void buildSide() {
+        if (sideHost == null) return;
+        if (mode != MODE_WEB) parkWeb();
+        else if (web != null && web.getParent() != null && !isInside(web, sideHost)) {
+            ((android.view.ViewGroup) web.getParent()).removeView(web);
+        }
+        sideHost.removeAllViews();
+        FrameLayout glass = new FrameLayout(this);
+        GradientDrawable gb = new GradientDrawable();
+        gb.setColor(GLASS);
+        gb.setCornerRadius(dp(24));
+        gb.setStroke(1, Color.parseColor("#22FFFFFF"));
+        glass.setBackground(gb);
+        building4Side = true;
+        try {
+            glass.addView(mode == MODE_WEB ? buildWeb() : buildFull(), new FrameLayout.LayoutParams(-1, -1));
+        } finally { building4Side = false; }
+        FrameLayout.LayoutParams gl = new FrameLayout.LayoutParams(-1, -1);
+        gl.setMargins(dp(8), dp(8), dp(8), dp(8));
+        sideHost.addView(glass, gl);
+    }
+
+    /** 집 버튼: 왼쪽 네비 + 오른쪽 싼슬라 */
+    void goSplitHome() {
+        ComponentName nav = navApp(this);
+        if (nav == null) return;
+        hidePill();
+        if (inSplit()) { openSide(); return; }
+        launchSplit(nav, new ComponentName(this, SideActivity.class));
+    }
+
+    private void openSide() {
+        Intent i = new Intent(this, SideActivity.class);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { startActivity(i); } catch (Exception ignored) { }
+    }
+
+    /** 패널에서 고른 앱을 오른쪽 칸에 띄움 */
+    private void launchRight(ComponentName cn) {
+        rightApp = cn;
+        rightPkg = cn.getPackageName();
+        if (!inSplit()) { ComponentName nav = navApp(this); if (nav != null) { launchSplit(nav, cn); return; } }
+        Intent i = new Intent(Intent.ACTION_MAIN);
+        i.addCategory(Intent.CATEGORY_LAUNCHER);
+        i.setComponent(cn);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        try { startActivity(i); } catch (Exception ignored) { }
+    }
+
+    /** 오른쪽 앱을 전체 화면으로 */
+    private void rightBig() {
+        if (rightApp == null) return;
+        hidePill();
+        if (inSplit()) performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+        final ComponentName cn = rightApp;
+        ui.postDelayed(() -> launchFull(this, cn), 700);
+    }
+
+    /** 전체 화면 앱을 다시 오른쪽 반으로 */
+    private void rightBack() {
+        ComponentName nav = navApp(this);
+        if (rightApp == null || nav == null) return;
+        hidePill();
+        launchSplit(nav, rightApp);
+    }
+
+    private void webBig() {
+        if (web == null) return;
+        webBigOn = true;
+        if (web.getParent() != null) ((android.view.ViewGroup) web.getParent()).removeView(web);
+        enterVideoFull(web, null);
+        if (android.os.SystemClock.uptimeMillis() - lastPlayAt < 3000) {
+            bgKeep = true; ui.postDelayed(this::resumeWeb, 600); ui.postDelayed(() -> bgKeep = false, 900);
+        }
+    }
+
+    private void onSplitEvent(String pkg, CharSequence cls) {
+        if (attached) hidePanel();
+        ComponentName nav = navApp(this);
+        if (pkg.equals(getPackageName()) || (nav != null && pkg.equals(nav.getPackageName()))) {
+            if (!pkg.equals(getPackageName()) || cls == null || !cls.toString().contains("Video")) hidePill();
+            return;
+        }
+        if (!isBigWindow(pkg, cls)) return;
+        if (pkg.equals(rightPkg)) showPill(); else hidePill();
+    }
+
+    private boolean pillSplit = false;
+
+    private void showPill() {
+        boolean split = inSplit();
+        hidePill();
+        pillSplit = split;
+        pill = new FrameLayout(this);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(6), dp(4), dp(6), dp(4));
+        row.setBackground(round(Color.parseColor("#CC111620"), dp(22)));
+        if (split) {
+            row.addView(pillBtn("⤢  크게", v -> rightBig()));
+            row.addView(pillBtn("◧  패널", v -> { hidePill(); openSide(); }));
+        } else {
+            row.addView(pillBtn("◧  반반으로", v -> rightBack()));
+        }
+        pill.addView(row, new FrameLayout.LayoutParams(-2, -2));
+        WindowManager.LayoutParams pl = new WindowManager.LayoutParams(-2, -2,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        pl.gravity = Gravity.BOTTOM | Gravity.END;
+        pl.x = dp(16);
+        pl.y = dp(16);
+        try { wm.addView(pill, pl); } catch (Exception e) { pill = null; }
+    }
+
+    private TextView pillBtn(String s, View.OnClickListener l) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(14);
+        t.setPadding(dp(14), dp(9), dp(14), dp(9));
+        t.setOnClickListener(l);
+        return t;
+    }
+
+    private void hidePill() {
+        if (pill == null) return;
+        try { wm.removeView(pill); } catch (Exception ignored) { }
+        pill = null;
+    }
 
     private void openHome(String what, int slot) {
         MainActivity.otherScreen = true;
