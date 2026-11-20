@@ -607,6 +607,7 @@ public class PanelService extends AccessibilityService {
             s.setUseWideViewPort(true);
             web.setBackgroundColor(Color.BLACK);
             web.addJavascriptInterface(new WebBridge(), "GT");
+            web.setOnTouchListener((v, ev) -> { lastWebTouch = android.os.SystemClock.uptimeMillis(); return false; });
             web.setWebViewClient(new WebViewClient() {
                 @Override public void onPageStarted(WebView v, String url, Bitmap fav) {
                     v.evaluateJavascript(KEEP_JS, null);
@@ -781,7 +782,12 @@ public class PanelService extends AccessibilityService {
     private void enterVideoFull(View v, WebChromeClient.CustomViewCallback cb) {
         exitVideoFull(true);
         videoCb = cb;
-        videoRoot = new FrameLayout(this);
+        videoRoot = new FrameLayout(this) {
+            @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+                lastWebTouch = android.os.SystemClock.uptimeMillis();
+                return super.dispatchTouchEvent(ev);
+            }
+        };
         videoRoot.setBackgroundColor(Color.BLACK);
         if (v.getParent() != null) ((android.view.ViewGroup) v.getParent()).removeView(v);
         videoRoot.addView(v, new FrameLayout.LayoutParams(-1, -1));
@@ -862,14 +868,24 @@ public class PanelService extends AccessibilityService {
         public void st(boolean playing, String title) {
             ui.post(() -> {
                 boolean ch = playing != webPlaying || !String.valueOf(title).equals(webTitle);
+                boolean was = webPlaying;
                 webPlaying = playing; webTitle = title;
-                if (playing) lastPlayAt = android.os.SystemClock.uptimeMillis();
+                long now = android.os.SystemClock.uptimeMillis();
+                if (playing) { lastPlayAt = now; userPaused = false; }
+                // 네비 안내 등 다른 앱 때문에 멈춘 거면 (내가 멈춘 게 아니면) 잠시 뒤 한 번만 다시 재생
+                if (was && !playing && !userPaused && now - lastWebTouch > 2500 && now - lastAutoResume > 8000) {
+                    lastAutoResume = now;
+                    ui.postDelayed(() -> {
+                        if (!webPlaying && !userPaused && web != null) web.evaluateJavascript(RESUME_JS, null);
+                    }, 2500);
+                }
                 if (ch) refreshMedia();
             });
         }
     }
 
-    private long lastPlayAt = -100000;
+    private long lastPlayAt = -100000, lastWebTouch = -100000, lastAutoResume = -100000;
+    private boolean userPaused = false;
     private boolean bgKeep = false;   // 화면 바뀔 때 듣고 있던 유튜브는 계속 이어서 재생
     private static final String RESUME_JS = "(function(){try{var v=document.querySelector('video');if(!v||v.ended)return;"
             + "if(v.paused){v.play();}else{var t=v.currentTime;setTimeout(function(){if(v.currentTime==t&&!v.paused){v.pause();v.play();}},700);}"
@@ -931,7 +947,7 @@ public class PanelService extends AccessibilityService {
 
     private void webMedia(int code) {
         if (web == null) return;
-        if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) { bgKeep = !webPlaying; if (webPlaying) lastPlayAt = -100000; }
+        if (code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) { bgKeep = !webPlaying; if (webPlaying) { lastPlayAt = -100000; userPaused = true; } }
         String js = code == KeyEvent.KEYCODE_MEDIA_NEXT
                 ? "var v=document.querySelector('video');if(v&&isFinite(v.duration))v.currentTime=v.duration-0.3;"
                 : code == KeyEvent.KEYCODE_MEDIA_PREVIOUS
