@@ -1229,7 +1229,13 @@ public class PanelService extends AccessibilityService {
         if (nav == null) return;
         hidePill();
         if (inSplit()) { openSide(); return; }
-        launchSplit(nav, new ComponentName(this, SideActivity.class));
+        splitWithNav(nav, new ComponentName(this, SideActivity.class));
+    }
+
+    /** 네비와 다른 화면을 반반으로. 설정에서 자리를 바꾸면 순서가 바뀜 */
+    private void splitWithNav(ComponentName nav, ComponentName other) {
+        if (prefs().getBoolean("split_swap", false)) launchSplit(other, nav);
+        else launchSplit(nav, other);
     }
 
     private void openSide() {
@@ -1242,7 +1248,7 @@ public class PanelService extends AccessibilityService {
     private void launchRight(ComponentName cn) {
         rightApp = cn;
         rightPkg = cn.getPackageName();
-        if (!inSplit()) { ComponentName nav = navApp(this); if (nav != null) { launchSplit(nav, cn); return; } }
+        if (!inSplit()) { ComponentName nav = navApp(this); if (nav != null) { splitWithNav(nav, cn); return; } }
         Intent i = new Intent(Intent.ACTION_MAIN);
         i.addCategory(Intent.CATEGORY_LAUNCHER);
         i.setComponent(cn);
@@ -1264,7 +1270,7 @@ public class PanelService extends AccessibilityService {
         ComponentName nav = navApp(this);
         if (rightApp == null || nav == null) return;
         hidePill();
-        launchSplit(nav, rightApp);
+        splitWithNav(nav, rightApp);
     }
 
     private void webBig() {
@@ -1335,6 +1341,16 @@ public class PanelService extends AccessibilityService {
     private void openHome(String what, int slot) {
         MainActivity.otherScreen = true;
         hidePanel();
+        if (splitLayout(this) && inSplit()) {   // 설정·앱 고르기는 반반을 풀고 전체 화면으로
+            hidePill();
+            performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+            ui.postDelayed(() -> openHomeNow(what, slot), 700);
+            return;
+        }
+        openHomeNow(what, slot);
+    }
+
+    private void openHomeNow(String what, int slot) {
         Intent i = new Intent(this, MainActivity.class);
         i.putExtra("mode", what);
         i.putExtra("slot", slot);

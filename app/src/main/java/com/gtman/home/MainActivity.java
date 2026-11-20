@@ -199,11 +199,19 @@ public class MainActivity extends Activity {
 
         list.addView(row("네비 앱", navName, v -> showApps(-2)));
         boolean split = PanelService.splitLayout(this);
-        list.addView(row("화면 방식", split ? "반반 (왼쪽 네비)" : "떠 있는 패널", v -> {
+        list.addView(row("화면 방식", split ? "반반" : "떠 있는 패널", v -> {
             prefs().edit().putString("layout", split ? "float" : "split").apply();
             if (PanelService.inst != null) { PanelService.inst.exitSplit(); PanelService.inst.rebuild(); }
             showSettings();
         }));
+        if (split) {
+            boolean swap = prefs().getBoolean("split_swap", false);
+            list.addView(row("네비 · 패널 자리 바꾸기", swap ? "바꿈" : "처음대로", v -> {
+                prefs().edit().putBoolean("split_swap", !swap).apply();
+                if (PanelService.inst != null) PanelService.inst.exitSplit();
+                showSettings();
+            }));
+        }
         list.addView(row("홈 누르면 네비 자동 실행", auto ? "켬" : "끔", v -> {
             prefs().edit().putBoolean("auto_nav", !auto).apply(); showSettings(); }));
         list.addView(row("패널 보이기", off ? "끔" : "켬", v -> {
