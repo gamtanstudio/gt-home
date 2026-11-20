@@ -35,6 +35,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".SideActivity"
+            android:exported="false"
+            android:label="싼슬라"
+            android:taskAffinity="com.gtman.home.side"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode" />
+
         <service
             android:name=".PanelService"
             android:label="싼슬라 패널"
