@@ -298,6 +298,12 @@ public class PanelService extends AccessibilityService {
         return Math.max(dp(300), Math.min(w, Math.round(screenW() * 0.65f)));
     }
 
+    /** 동그라미·곡명 막대 위치: 처음엔 오른쪽 아래, 끌어서 옮기면 그 자리 기억 */
+    private int floatY(int h, int top) {
+        int bottom = prefs().getInt("float_bottom", screenH() - dp(prefs().getInt("bottom_gap", 84)));
+        return Math.max(top, Math.min(bottom - h, screenH() - h));
+    }
+
     private void makeParams() {
         int top = statusBarH();
         lp = new WindowManager.LayoutParams(
@@ -316,14 +322,14 @@ public class PanelService extends AccessibilityService {
             lp.width = dp(300);
             lp.height = dp(50);
             lp.x = dp(prefs().getInt("right_gap", 72));
-            lp.y = Math.max(top, Math.min(prefs().getInt("bubble_y", top + dp(160)), screenH() - dp(70)));
+            lp.y = floatY(lp.height, top);
             return;
         }
         if (mode == MODE_BUBBLE) {
             lp.width = dp(92);
             lp.height = dp(92);
             lp.x = dp(prefs().getInt("right_gap", 72));
-            lp.y = Math.max(top, Math.min(prefs().getInt("bubble_y", top + dp(160)), screenH() - dp(90)));
+            lp.y = floatY(lp.height, top);
         }
     }
 
@@ -569,12 +575,12 @@ public class PanelService extends AccessibilityService {
                         int dy = Math.round(e.getRawY() - sy);
                         if (Math.abs(dy) > dp(8)) moved = true;
                         if (moved) {
-                            lp.y = Math.max(statusBarH(), Math.min(startY + dy, screenH() - dp(90)));
+                            lp.y = Math.max(statusBarH(), Math.min(startY + dy, screenH() - lp.height));
                             try { wm.updateViewLayout(root, lp); } catch (Exception ignored) { }
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (moved) prefs().edit().putInt("bubble_y", lp.y).apply();
+                        if (moved) prefs().edit().putInt("float_bottom", lp.y + lp.height).apply();
                         else setMode(MODE_FULL);
                         return true;
                 }
