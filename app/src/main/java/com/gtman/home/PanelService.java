@@ -408,10 +408,17 @@ public class PanelService extends AccessibilityService {
         col.addView(media, mlp);
 
         LinearLayout quick = new LinearLayout(this);
-        quick.addView(chip("▶  유튜브", v -> openWeb("https://m.youtube.com/")), new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView yt = chip("▶  싼슬라튜브", v -> openWeb("https://m.youtube.com/"));
+        yt.setTextSize(13);
+        yt.setSingleLine(true);
+        quick.addView(yt, new LinearLayout.LayoutParams(0, -2, 1f));
         View sp = new View(this);
         quick.addView(sp, new LinearLayout.LayoutParams(dp(10), 1));
-        quick.addView(chip("🌐  인터넷", v -> openWeb(prefs().getString("web_home", "https://m.naver.com/"))), new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView br = chip("🌐  싼슬라브라우저", v -> openWeb(prefs().getString("web_home", "https://m.naver.com/")));
+        br.setTextSize(13);
+        br.setSingleLine(true);
+        br.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        quick.addView(br, new LinearLayout.LayoutParams(0, -2, 1f));
         LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, -2);
         qlp.topMargin = dp(10);
         col.addView(quick, qlp);
@@ -825,8 +832,8 @@ public class PanelService extends AccessibilityService {
     private void refreshMedia0() {
         if (mTitle == null) return;
         if (webIsMedia()) {
-            mTitle.setText(webTitle.isEmpty() ? "유튜브" : webTitle);
-            mArtist.setText("패널 유튜브");
+            mTitle.setText(webTitle.isEmpty() ? "싼슬라튜브" : webTitle);
+            mArtist.setText("싼슬라튜브");
             mArt.setImageBitmap(web.getFavicon());
             if (mPlay != null) mPlay.setText(webPlaying ? "⏸" : "▶");
             return;
