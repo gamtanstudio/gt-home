@@ -429,7 +429,6 @@ public class PanelService extends AccessibilityService {
         if (building4Side) {
             bottom.addView(textBtn("⤢  네비 크게", v -> exitSplit()));
         } else {
-            bottom.addView(textBtn("◀  접기", v -> setMode(MODE_MINI)));
             bottom.addView(textBtn("●  숨기기", v -> setMode(MODE_BUBBLE)));
             bottom.addView(textBtn("━  곡명", v -> setMode(MODE_STRIP)));
         }
@@ -1044,6 +1043,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void setMode(int m) {
+        if (m == MODE_MINI) m = MODE_STRIP;   // 세로 막대는 없앰 → 가로 막대로
         if (sideHost != null && splitLayout(this)) {
             mode = (m == MODE_WEB) ? MODE_WEB : MODE_FULL;
             buildSide();
