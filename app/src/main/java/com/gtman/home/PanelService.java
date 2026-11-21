@@ -70,7 +70,7 @@ public class PanelService extends AccessibilityService {
 
     static PanelService inst;
 
-    static final int MODE_FULL = 0, MODE_MINI = 1, MODE_WEB = 2, MODE_BUBBLE = 3;
+    static final int MODE_FULL = 0, MODE_MINI = 1, MODE_WEB = 2, MODE_BUBBLE = 3, MODE_STRIP = 4;
 
     private static final int GLASS = Color.parseColor("#E6111620");
     private static final int CARD = Color.parseColor("#1AFFFFFF");
@@ -312,9 +312,16 @@ public class PanelService extends AccessibilityService {
         lp.gravity = Gravity.TOP | Gravity.END;
         lp.x = dp(prefs().getInt("right_gap", 72));   // 네이버 오른쪽 버튼·속도 표시가 보이게
         lp.y = top + dp(prefs().getInt("top_gap", 72));
+        if (mode == MODE_STRIP) {
+            lp.width = dp(300);
+            lp.height = dp(50);
+            lp.x = dp(prefs().getInt("right_gap", 72));
+            lp.y = Math.max(top, Math.min(prefs().getInt("bubble_y", top + dp(160)), screenH() - dp(70)));
+            return;
+        }
         if (mode == MODE_BUBBLE) {
-            lp.width = dp(76);
-            lp.height = dp(76);
+            lp.width = dp(92);
+            lp.height = dp(92);
             lp.x = dp(prefs().getInt("right_gap", 72));
             lp.y = Math.max(top, Math.min(prefs().getInt("bubble_y", top + dp(160)), screenH() - dp(90)));
         }
@@ -329,6 +336,7 @@ public class PanelService extends AccessibilityService {
         if (mode != MODE_WEB) parkWeb();
         root = new FrameLayout(this);
         if (mode == MODE_BUBBLE) { root.addView(buildBubble(), new FrameLayout.LayoutParams(-1, -1)); return; }
+        if (mode == MODE_STRIP) { root.addView(buildStrip(), new FrameLayout.LayoutParams(-1, -1)); return; }
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -423,6 +431,7 @@ public class PanelService extends AccessibilityService {
         } else {
             bottom.addView(textBtn("◀  접기", v -> setMode(MODE_MINI)));
             bottom.addView(textBtn("●  숨기기", v -> setMode(MODE_BUBBLE)));
+            bottom.addView(textBtn("━  곡명", v -> setMode(MODE_STRIP)));
         }
         View fill = new View(this);
         bottom.addView(fill, new LinearLayout.LayoutParams(0, 1, 1f));
@@ -547,7 +556,12 @@ public class PanelService extends AccessibilityService {
         face.setAlpha(0.92f);
         b.addView(face, new FrameLayout.LayoutParams(-1, -1));
         // 누르면 펼치고, 끌면 위아래로 옮김
-        b.setOnTouchListener(new View.OnTouchListener() {
+        b.setOnTouchListener(moveOrOpen());
+        return b;
+    }
+
+    private View.OnTouchListener moveOrOpen() {
+        return (new View.OnTouchListener() {
             float sy; int startY; boolean moved;
             @Override public boolean onTouch(View v, MotionEvent e) {
                 switch (e.getActionMasked()) {
@@ -568,7 +582,70 @@ public class PanelService extends AccessibilityService {
                 return false;
             }
         });
-        return b;
+    }
+
+    // ---------- E: 얇은 가로 막대 (사진 + 곡명) ----------
+    private TextView stripText;
+    private TextClock stripClock;
+
+    private View buildStrip() {
+        if (mTitle == null) buildMedia();   // 곡 정보 받을 준비
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(5), dp(5), dp(16), dp(5));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#D9111620"));
+        bg.setCornerRadius(dp(25));
+        bg.setStroke(dp(1), Color.parseColor("#33FFFFFF"));
+        bar.setBackground(bg);
+        ImageView face = new ImageView(this);
+        face.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        face.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View v, Outline o) { o.setOval(0, 0, v.getWidth(), v.getHeight()); }
+        });
+        face.setClipToOutline(true);
+        if (!photos.isEmpty()) {
+            Bitmap bm = decode(photos.get(Math.max(0, photoIdx) % photos.size()), 200);
+            if (bm != null) face.setImageBitmap(bm);
+        }
+        bar.addView(face, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        TextView note = new TextView(this);
+        note.setText("♪");
+        note.setTextColor(Color.parseColor("#8FB4FF"));
+        note.setTextSize(15);
+        LinearLayout.LayoutParams nl = new LinearLayout.LayoutParams(-2, -2);
+        nl.leftMargin = dp(12);
+        nl.rightMargin = dp(8);
+        bar.addView(note, nl);
+        stripText = new TextView(this);
+        stripText.setTextColor(Color.WHITE);
+        stripText.setTextSize(15);
+        stripText.setSingleLine(true);
+        stripText.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
+        stripText.setMarqueeRepeatLimit(-1);
+        stripText.setHorizontallyScrolling(true);
+        stripText.setSelected(true);
+        bar.addView(stripText, new LinearLayout.LayoutParams(0, -2, 1f));
+        stripClock = new TextClock(this);
+        stripClock.setFormat24Hour("HH:mm");
+        stripClock.setFormat12Hour("HH:mm");
+        stripClock.setTextColor(Color.WHITE);
+        stripClock.setTextSize(15);
+        bar.addView(stripClock, new LinearLayout.LayoutParams(0, -2, 1f));
+        bar.setOnTouchListener(moveOrOpen());
+        updateStrip();
+        return bar;
+    }
+
+    private void updateStrip() {
+        if (stripText == null || mTitle == null) return;
+        String t = String.valueOf(mTitle.getText());
+        boolean none = t.isEmpty() || t.equals("재생 중인 음악 없음") || t.equals("음악");
+        String a = mArtist == null ? "" : String.valueOf(mArtist.getText());
+        if (!none && !a.isEmpty() && !a.startsWith("눌러서")) t = t + "  ·  " + a;
+        if (!t.equals(String.valueOf(stripText.getText()))) stripText.setText(t);
+        stripText.setVisibility(none ? View.GONE : View.VISIBLE);
+        if (stripClock != null) stripClock.setVisibility(none ? View.VISIBLE : View.GONE);
     }
 
     // ---------- C: 패널 안 유튜브 / 인터넷 ----------
@@ -738,7 +815,9 @@ public class PanelService extends AccessibilityService {
         }
     }
 
-    private void refreshMedia() {
+    private void refreshMedia() { refreshMedia0(); updateStrip(); }
+
+    private void refreshMedia0() {
         if (mTitle == null) return;
         if (webIsMedia()) {
             mTitle.setText(webTitle.isEmpty() ? "유튜브" : webTitle);
