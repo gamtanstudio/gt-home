@@ -319,15 +319,15 @@ public class PanelService extends AccessibilityService {
         lp.x = dp(prefs().getInt("right_gap", 72));   // 네이버 오른쪽 버튼·속도 표시가 보이게
         lp.y = top + dp(prefs().getInt("top_gap", 72));
         if (mode == MODE_STRIP) {
-            lp.width = dp(300);
-            lp.height = dp(50);
+            lp.width = dp(330);
+            lp.height = dp(62);
             lp.x = dp(prefs().getInt("right_gap", 72));
             lp.y = floatY(lp.height, top);
             return;
         }
         if (mode == MODE_BUBBLE) {
-            lp.width = dp(92);
-            lp.height = dp(92);
+            lp.width = dp(112);
+            lp.height = dp(112);
             lp.x = dp(prefs().getInt("right_gap", 72));
             lp.y = floatY(lp.height, top);
         }
@@ -607,7 +607,7 @@ public class PanelService extends AccessibilityService {
         bar.setPadding(dp(5), dp(5), dp(16), dp(5));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#D9111620"));
-        bg.setCornerRadius(dp(25));
+        bg.setCornerRadius(dp(31));
         bg.setStroke(dp(1), Color.parseColor("#33FFFFFF"));
         bar.setBackground(bg);
         ImageView face = new ImageView(this);
@@ -620,7 +620,7 @@ public class PanelService extends AccessibilityService {
             Bitmap bm = decode(photos.get(Math.max(0, photoIdx) % photos.size()), 200);
             if (bm != null) face.setImageBitmap(bm);
         }
-        bar.addView(face, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        bar.addView(face, new LinearLayout.LayoutParams(dp(52), dp(52)));
         TextView note = new TextView(this);
         note.setText("♪");
         note.setTextColor(Color.parseColor("#8FB4FF"));
@@ -631,7 +631,7 @@ public class PanelService extends AccessibilityService {
         bar.addView(note, nl);
         stripText = new TextView(this);
         stripText.setTextColor(Color.WHITE);
-        stripText.setTextSize(15);
+        stripText.setTextSize(16);
         stripText.setSingleLine(true);
         stripText.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
         stripText.setMarqueeRepeatLimit(-1);
@@ -642,7 +642,7 @@ public class PanelService extends AccessibilityService {
         stripClock.setFormat24Hour("HH:mm");
         stripClock.setFormat12Hour("HH:mm");
         stripClock.setTextColor(Color.WHITE);
-        stripClock.setTextSize(15);
+        stripClock.setTextSize(16);
         bar.addView(stripClock, new LinearLayout.LayoutParams(0, -2, 1f));
         bar.setOnTouchListener(moveOrOpen());
         updateStrip();
