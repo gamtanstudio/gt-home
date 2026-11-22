@@ -1587,9 +1587,56 @@ public class PanelService extends AccessibilityService {
 
     private void onNewDrive() {
         startLocation();
-        if (prefs().getBoolean("greet", true)) ui.postDelayed(this::greet, 1500);
-        if (prefs().getBoolean("auto_music", true)) ui.postDelayed(this::resumeMusic, prefs().getBoolean("greet", true) ? 9000 : 4000);
+        if (prefs().getBoolean("start_sound", true)) ui.postDelayed(this::playStart, 1500);
+        if (prefs().getBoolean("auto_music", true)) ui.postDelayed(this::resumeMusic, prefs().getBoolean("start_sound", true) ? 9000 : 4000);
         if (prefs().getBoolean("commute_ask", true)) ui.postDelayed(this::maybeCommute, 2000);
+    }
+
+    // ---------- 시작음: 기본 소리 또는 내 음악 파일의 한 부분 ----------
+    private android.media.MediaPlayer startPlayer;
+
+    void playStart() {
+        stopStart();
+        try {
+            android.media.MediaPlayer mp;
+            String uri = prefs().getString("start_uri", null);
+            final int startMs = prefs().getInt("start_sec", 0) * 1000;
+            final int lenMs = prefs().getInt("start_len", 8) * 1000;
+            if (uri != null) {
+                mp = new android.media.MediaPlayer();
+                mp.setAudioAttributes(new android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build());
+                mp.setDataSource(this, Uri.parse(uri));
+                mp.prepare();
+                if (startMs > 0) mp.seekTo(startMs);
+            } else {
+                mp = android.media.MediaPlayer.create(this, R.raw.start_chime);
+                if (mp == null) return;
+            }
+            startPlayer = mp;
+            mp.setOnCompletionListener(x -> stopStart());
+            mp.start();
+            if (uri != null) {   // 정한 길이만 틀고, 끝 1.5초는 부드럽게 줄임
+                final android.media.MediaPlayer m = mp;
+                final int fade = 1500, steps = 15;
+                for (int i = 1; i <= steps; i++) {
+                    final float v = 1f - i / (float) steps;
+                    ui.postDelayed(() -> { if (startPlayer == m) m.setVolume(v, v); }, lenMs - fade + (long) fade * i / steps);
+                }
+                ui.postDelayed(() -> { if (startPlayer == m) stopStart(); }, lenMs + 50);
+            }
+        } catch (Exception e) {
+            stopStart();
+            toast("시작음을 틀 수 없어요");
+        }
+    }
+
+    private void stopStart() {
+        if (startPlayer == null) return;
+        try { startPlayer.stop(); } catch (Exception ignored) { }
+        try { startPlayer.release(); } catch (Exception ignored) { }
+        startPlayer = null;
     }
 
     // ---------- 시동 인사 (기기의 한국어 음성으로 읽어 줌) ----------

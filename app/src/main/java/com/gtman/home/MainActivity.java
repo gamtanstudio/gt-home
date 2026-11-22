@@ -97,6 +97,7 @@ public class MainActivity extends Activity {
         getIntent().removeExtra("mode");
 
         if (PanelService.inst == null) { homeMode = false; showSetup(); return; }
+        if (pickedStart) { pickedStart = false; homeMode = false; showSettings(); askStartSec(); return; }
         if ("settings".equals(mode)) { homeMode = false; showSettings(); return; }
         if ("apps".equals(mode)) { homeMode = false; showApps(-1); return; }
         if ("pick".equals(mode)) { homeMode = false; showApps(slot); return; }
@@ -218,8 +219,9 @@ public class MainActivity extends Activity {
         placeRow(list, "home", "🏠 집 위치");
         placeRow(list, "studio", "📷 사진관 위치");
         toggleRow(list, "auto_size", "달리면 작게 · 서면 크게");
-        toggleRow(list, "greet", "시동 걸면 인사말");
-        list.addView(row("인사말 들어보기", "▶", v -> { if (PanelService.inst != null) PanelService.inst.greet(); }));
+        toggleRow(list, "start_sound", "시동 걸면 시작음");
+        list.addView(row("시작음", prefs().getString("start_uri", null) == null ? "기본" : "내 음악 " + prefs().getInt("start_sec", 0) + "초부터", v -> chooseStart()));
+        list.addView(row("시작음 들어보기", "▶", v -> { if (PanelService.inst != null) PanelService.inst.playStart(); }));
         toggleRow(list, "auto_music", "시동 걸면 음악 이어 듣기");
         toggleRow(list, "commute_ask", "출근길 사진관 안내 묻기");
         list.addView(row("홈 누르면 네비 자동 실행", auto ? "켬" : "끔", v -> {
@@ -324,6 +326,72 @@ public class MainActivity extends Activity {
                     } else prefs().edit().remove("place_" + key).apply();
                     showSettings();
                 }).show()));
+    }
+
+    private void chooseStart() {
+        boolean mine = prefs().getString("start_uri", null) != null;
+        String[] items = mine ? new String[]{"기본 시작음", "내 음악 파일 고르기", "시작 위치 바꾸기", "틀 길이 바꾸기"}
+                : new String[]{"기본 시작음", "내 음악 파일 고르기"};
+        new AlertDialog.Builder(this).setTitle("시작음").setItems(items, (d, w) -> {
+            if (w == 0) { prefs().edit().remove("start_uri").apply(); showSettings(); }
+            else if (w == 1) {
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("audio/*");
+                try { startActivityForResult(i, 31); } catch (Exception e) {
+                    android.widget.Toast.makeText(this, "파일을 고를 수 없어요", android.widget.Toast.LENGTH_LONG).show(); }
+            } else if (w == 2) askStartSec();
+            else askNumber("틀 길이(초)", "start_len", 8);
+        }).show();
+    }
+
+    private boolean pickedStart = false;
+
+    private void askStartSec() {
+        final EditText min = new EditText(this), sec = new EditText(this);
+        int cur = prefs().getInt("start_sec", 0);
+        min.setInputType(InputType.TYPE_CLASS_NUMBER);
+        sec.setInputType(InputType.TYPE_CLASS_NUMBER);
+        min.setText(String.valueOf(cur / 60));
+        sec.setText(String.valueOf(cur % 60));
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(24), dp(8), dp(24), 0);
+        TextView a = new TextView(this); a.setText("분");
+        TextView b = new TextView(this); b.setText("초");
+        r.addView(min, new LinearLayout.LayoutParams(dp(80), -2)); r.addView(a);
+        r.addView(sec, new LinearLayout.LayoutParams(dp(80), -2)); r.addView(b);
+        new AlertDialog.Builder(this).setTitle("시작 위치").setView(r)
+                .setPositiveButton("저장", (d, w) -> {
+                    int mm = 0, ss = 0;
+                    try { mm = Integer.parseInt(min.getText().toString().trim()); } catch (Exception ignored) { }
+                    try { ss = Integer.parseInt(sec.getText().toString().trim()); } catch (Exception ignored) { }
+                    prefs().edit().putInt("start_sec", Math.max(0, mm * 60 + ss)).apply();
+                    if (PanelService.inst != null) PanelService.inst.playStart();
+                    showSettings();
+                }).setNegativeButton("취소", null).show();
+    }
+
+    private void askNumber(String title, String key, int def) {
+        final EditText et = new EditText(this);
+        et.setInputType(InputType.TYPE_CLASS_NUMBER);
+        et.setText(String.valueOf(prefs().getInt(key, def)));
+        new AlertDialog.Builder(this).setTitle(title).setView(et)
+                .setPositiveButton("저장", (d, w) -> {
+                    try { prefs().edit().putInt(key, Math.max(2, Math.min(30, Integer.parseInt(et.getText().toString().trim())))).apply(); }
+                    catch (Exception ignored) { }
+                    showSettings();
+                }).setNegativeButton("취소", null).show();
+    }
+
+    @Override
+    protected void onActivityResult(int code, int res, Intent data) {
+        super.onActivityResult(code, res, data);
+        if (code != 31 || res != RESULT_OK || data == null || data.getData() == null) return;
+        try { getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+        catch (Exception ignored) { }
+        prefs().edit().putString("start_uri", data.getData().toString()).putInt("start_sec", 0).apply();
+        pickedStart = true;
     }
 
     private void toggleRow(LinearLayout list, String key, String label) {
