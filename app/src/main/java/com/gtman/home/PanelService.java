@@ -411,12 +411,6 @@ public class PanelService extends AccessibilityService {
         col.addView(media, mlp);
 
         LinearLayout quick = new LinearLayout(this);
-        TextView yt = chip("▶  싼슬라튜브", v -> openWeb("https://m.youtube.com/"));
-        yt.setTextSize(13);
-        yt.setSingleLine(true);
-        quick.addView(yt, new LinearLayout.LayoutParams(0, -2, 1f));
-        View sp = new View(this);
-        quick.addView(sp, new LinearLayout.LayoutParams(dp(10), 1));
         TextView br = chip("🌐  싼슬라브라우저", v -> openWeb(prefs().getString("web_home", "https://m.naver.com/")));
         br.setTextSize(13);
         br.setSingleLine(true);
@@ -789,7 +783,7 @@ public class PanelService extends AccessibilityService {
         txt.setOnClickListener(v -> {
             if (webIsMedia()) { setMode(MODE_WEB); return; }
             if (!mediaAllowed()) { openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS); return; }
-            ComponentName app = resolve(this, prefs().getString("music_app", null));
+            ComponentName app = musicApp(this);
             if (app != null) launchFull(this, app); else openHome("music", -1);
         });
         txt.setOnLongClickListener(v -> { openHome("music", -1); return true; });
@@ -1683,9 +1677,16 @@ public class PanelService extends AccessibilityService {
         } catch (Exception ignored) { }
     }
 
-    /** 시동 걸면 마지막에 듣던 음악 이어서 */
+    /** 기본 음악 앱: 고른 게 없으면 VLC */
+    static ComponentName musicApp(Context c) {
+        ComponentName cn = resolve(c, c.getSharedPreferences("gthome", MODE_PRIVATE).getString("music_app", null));
+        return cn != null ? cn : resolve(c, "org.videolan.vlc");
+    }
+
+    /** 시동 걸면 기본 음악 앱(VLC)을 이어서 재생 */
     private void resumeMusic() {
-        String last = prefs().getString("last_music_pkg", null);
+        ComponentName app = musicApp(this);
+        String last = app != null ? app.getPackageName() : prefs().getString("last_music_pkg", null);
         if (last == null) return;
         try {
             pickController();
@@ -1696,10 +1697,22 @@ public class PanelService extends AccessibilityService {
             }
         } catch (Exception ignored) { }
         try {
-            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            if (am.isMusicActive()) return;
-            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
-            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY));
+            AudioManager am0 = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am0.isMusicActive()) return;
+            for (int a : new int[]{KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP}) {
+                Intent mb = new Intent(Intent.ACTION_MEDIA_BUTTON);
+                mb.setPackage(last);
+                mb.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(a, KeyEvent.KEYCODE_MEDIA_PLAY));
+                sendBroadcast(mb);
+            }
+            ui.postDelayed(() -> {   // 그래도 안 나오면 일반 재생 버튼
+                try {
+                    AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                    if (am.isMusicActive()) return;
+                    am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+                    am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY));
+                } catch (Exception ignored) { }
+            }, 2500);
         } catch (Exception ignored) { }
     }
 

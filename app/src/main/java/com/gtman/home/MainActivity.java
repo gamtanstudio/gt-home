@@ -285,7 +285,7 @@ public class MainActivity extends Activity {
     }
 
     private String musicName() {
-        ComponentName c = PanelService.resolve(this, prefs().getString("music_app", null));
+        ComponentName c = PanelService.musicApp(this);
         if (c == null) return "없음";
         try { return String.valueOf(getPackageManager().getActivityInfo(c, 0).loadLabel(getPackageManager())); }
         catch (Exception e) { return "없음"; }
