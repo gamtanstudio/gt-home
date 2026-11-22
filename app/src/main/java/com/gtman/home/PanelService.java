@@ -1121,7 +1121,10 @@ public class PanelService extends AccessibilityService {
         t.setLayoutParams(new LinearLayout.LayoutParams(dp(46), dp(44)));
         t.setOnClickListener(v -> {
             if (webIsMedia()) { webMedia(code); return; }
-            if (ctrl != null) {
+            PlaybackState cs = ctrl == null ? null : ctrl.getPlaybackState();
+            boolean live = cs != null && cs.getState() != PlaybackState.STATE_NONE
+                    && cs.getState() != PlaybackState.STATE_STOPPED && cs.getState() != PlaybackState.STATE_ERROR;
+            if (ctrl != null && live) {
                 try {
                     MediaController.TransportControls tc = ctrl.getTransportControls();
                     if (code == KeyEvent.KEYCODE_MEDIA_NEXT) { tc.skipToNext(); return; }
@@ -1130,6 +1133,18 @@ public class PanelService extends AccessibilityService {
                     if (st != null && st.getState() == PlaybackState.STATE_PLAYING) tc.pause(); else tc.play();
                     return;
                 } catch (Exception ignored) { }
+            }
+            // 틀고 있는 앱이 없으면 기본 음악 앱(VLC)으로
+            ComponentName app = musicApp(this);
+            if (app != null) {
+                int k = code == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ? KeyEvent.KEYCODE_MEDIA_PLAY : code;
+                for (int a : new int[]{KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP}) {
+                    Intent mb = new Intent(Intent.ACTION_MEDIA_BUTTON);
+                    mb.setPackage(app.getPackageName());
+                    mb.putExtra(Intent.EXTRA_KEY_EVENT, new KeyEvent(a, k));
+                    sendBroadcast(mb);
+                }
+                return;
             }
             AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, code));
