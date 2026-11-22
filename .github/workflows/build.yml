@@ -36,10 +36,11 @@ jobs:
           base64 -d keystore.b64 > app/gt.keystore
           gradle assembleDebug --no-daemon --stacktrace
           cp app/build/outputs/apk/debug/app-debug.apk gt-home.apk
+          cp hud/build/outputs/apk/debug/hud-debug.apk sansla-hud.apk
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest gt-home.apk -t "GT 홈" -n "빌드 #${{ github.run_number }}"
+          gh release create latest gt-home.apk sansla-hud.apk -t "GT 홈" -n "빌드 #${{ github.run_number }}"
