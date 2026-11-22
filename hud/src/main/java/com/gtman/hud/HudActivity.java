@@ -65,7 +65,7 @@ public class HudActivity extends Activity {
 
     private FrameLayout stage;
     private LinearLayout turnRow, callBox;
-    private TextView arrow, dist, road, speed, unit, clock, song, callName, status;
+    private TextView arrow, dist, road, speed, unit, clock, song, callName, status, raw;
 
     private volatile String carIp = null;
     private boolean everFound = false, searching = false;
@@ -152,7 +152,7 @@ public class HudActivity extends Activity {
         tx.addView(road);
         turnRow.addView(tx);
         turnRow.setVisibility(View.INVISIBLE);
-        col.addView(turnRow);
+        col.addView(turnRow, new LinearLayout.LayoutParams(-2, -2));
 
         LinearLayout sp = new LinearLayout(this);
         sp.setGravity(Gravity.BOTTOM);
@@ -164,7 +164,7 @@ public class HudActivity extends Activity {
         unit.setPadding(0, 0, 0, dp(10));
         sp.addView(speed);
         sp.addView(unit);
-        col.addView(sp);
+        col.addView(sp, new LinearLayout.LayoutParams(-2, -2));
 
         LinearLayout bot = new LinearLayout(this);
         bot.setGravity(Gravity.CENTER);
@@ -197,6 +197,14 @@ public class HudActivity extends Activity {
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         cl.topMargin = dp(16);
         stage.addView(callBox, cl);
+
+        // 확인판: 차가 네이버 지도 화면에서 읽은 글자 (안내 맞추기용, 나중에 뺌)
+        raw = text(11, Color.parseColor("#C9A227"), false);
+        raw.setMaxLines(9);
+        raw.setEllipsize(TextUtils.TruncateAt.END);
+        FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+        rl.setMargins(dp(14), dp(10), dp(14), 0);
+        root.addView(raw, rl);
 
         status = text(13, Color.parseColor("#3A4350"), false);
         FrameLayout.LayoutParams sl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.END);
@@ -345,17 +353,20 @@ public class HudActivity extends Activity {
             JSONObject d = new JSONObject(body);
             String s = d.optString("song", "");
             song.setText(s.isEmpty() ? "" : "♪ " + s);
+            raw.setText(d.optString("raw", ""));
+            String carCall = d.optString("call", "");
+            if (callText.isEmpty() && !carCall.isEmpty()) callText = carCall;   // 폰이 못 잡았으면 차 정보로
             String nav = (d.optString("navTitle", "") + " " + d.optString("navText", "")).trim();
-            if (nav.isEmpty()) { turnRow.setVisibility(View.INVISIBLE); return; }
             Matcher m = DIST.matcher(nav);
+            boolean real = m.find() || nav.matches(".*(회전|유턴|U턴|목적지|도착|진입|출구).*");
+            if (!real) { turnRow.setVisibility(View.INVISIBLE); return; }   // 안내 내용 없으면 숨김
+            m.reset();
             String ds = "", rest = nav;
             if (m.find()) { ds = m.group(1) + m.group(2); rest = (nav.substring(0, m.start()) + nav.substring(m.end())).trim(); }
             dist.setText(ds);
             road.setText(rest);
             arrow.setText(arrowFor(nav));
             turnRow.setVisibility(View.VISIBLE);
-            String carCall = d.optString("call", "");
-            if (callText.isEmpty() && !carCall.isEmpty()) callText = carCall;   // 폰이 못 잡았으면 차 정보로
         } catch (Exception ignored) { }
     }
 
