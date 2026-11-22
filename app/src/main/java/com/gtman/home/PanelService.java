@@ -1751,8 +1751,16 @@ public class PanelService extends AccessibilityService {
         }
     };
 
+    /** 휴대폰에서 사진이 새로 들어오면 바로 보여 줌 */
+    void reloadPhotos() {
+        loadPhotos();
+        photoIdx = -1;
+        if (photoA != null) nextPhoto();
+    }
+
     void loadPhotos() {
         photos.clear();
+        photos.addAll(PhotoServer.photos(this));   // 휴대폰에서 보낸 사진
         File dir = new File(getFilesDir(), "album");
         File[] fs = dir.listFiles();
         if (fs != null && fs.length > 0 && albumToken(this) != null) {
