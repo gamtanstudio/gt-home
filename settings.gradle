@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "GTHome"
 include ':app'
+include ':hud'
