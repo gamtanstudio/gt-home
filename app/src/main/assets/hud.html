@@ -16,9 +16,12 @@ body.v #w{transform:scaleY(-1)}
 #unit{font-size:6vh;color:#9fb3c8;font-weight:600}
 #bot{display:flex;gap:5vw;font-size:5vh;color:#9fb3c8;max-width:92vw}
 #song{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}
+#call{position:absolute;left:0;right:0;top:6vh;margin:auto;width:fit-content;max-width:90vw;display:none;align-items:center;gap:3vw;background:#0f3d23;border:.4vh solid #3dfc8a;border-radius:6vh;padding:2vh 5vw;font-size:9vh;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#call.on{display:flex}
 #off{position:absolute;bottom:2vh;right:3vw;font-size:3vh;color:#444}
 </style></head><body class=h>
 <div id=w>
+ <div id=call>📞 <span id=cname></span></div>
  <div id=turn><div id=arrow></div><div id=tx><div id=dist></div><div id=road></div></div></div>
  <div id=sp><div id=spd>--</div><div id=unit>km/h</div></div>
  <div id=bot><span id=clk></span><span id=song></span></div>
@@ -49,7 +52,8 @@ async function tick(){
   $('dist').textContent=m?m[1]+m[2]:'';
   $('road').textContent=nav.replace(m?m[0]:'','').trim();
   $('arrow').textContent=arrow(nav);
-  $('turn').classList.toggle('on',!!nav);
+  $('turn').classList.toggle('on',!!nav&&!d.call);
+  $('cname').textContent=d.call||'';$('call').classList.toggle('on',!!d.call);
  }catch(e){if(++fail>4)$('off').textContent='싼슬라 연결 대기';}
  setTimeout(tick,500);
 }
