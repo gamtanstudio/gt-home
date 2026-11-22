@@ -123,6 +123,7 @@ public class MainActivity extends Activity {
     private void showHome() {
         homeMode = true;
         otherScreen = false;
+        askLocationOnce();
         LinearLayout box = page();
         box.setGravity(Gravity.CENTER);
         ComponentName nav = PanelService.navApp(this);
@@ -212,6 +213,11 @@ public class MainActivity extends Activity {
                 showSettings();
             }));
         }
+        placeRow(list, "home", "🏠 집 위치");
+        placeRow(list, "studio", "📷 사진관 위치");
+        toggleRow(list, "auto_size", "달리면 작게 · 서면 크게");
+        toggleRow(list, "auto_music", "시동 걸면 음악 이어 듣기");
+        toggleRow(list, "commute_ask", "출근길 사진관 안내 묻기");
         list.addView(row("홈 누르면 네비 자동 실행", auto ? "켬" : "끔", v -> {
             prefs().edit().putBoolean("auto_nav", !auto).apply(); showSettings(); }));
         list.addView(row("패널 보이기", off ? "끔" : "켬", v -> {
@@ -269,6 +275,48 @@ public class MainActivity extends Activity {
         if (c == null) return "없음";
         try { return String.valueOf(getPackageManager().getActivityInfo(c, 0).loadLabel(getPackageManager())); }
         catch (Exception e) { return "없음"; }
+    }
+
+    // 위치: 달리면 작게·집/사진관 안내에 씀 — 한 번만 물어봄
+    private void askLocationOnce() {
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (PanelService.inst != null) PanelService.inst.startLocation();
+            return;
+        }
+        if (prefs().getBoolean("asked_loc", false)) return;
+        prefs().edit().putBoolean("asked_loc", true).apply();
+        requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 7);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (PanelService.inst != null) PanelService.inst.startLocation();
+    }
+
+    private void placeRow(LinearLayout list, String key, String label) {
+        boolean has = prefs().getString("place_" + key, null) != null;
+        list.addView(row(label, has ? "저장됨" : "없음", v -> new AlertDialog.Builder(this).setTitle(label)
+                .setItems(new String[]{"지금 위치로 저장", "지우기"}, (d, w) -> {
+                    if (w == 0) {
+                        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            prefs().edit().putBoolean("asked_loc", false).apply();
+                            askLocationOnce();
+                            return;
+                        }
+                        boolean ok = PanelService.inst != null && PanelService.inst.savePlace(key);
+                        android.widget.Toast.makeText(this, ok ? "저장했어요" : "아직 위치를 못 찾았어요. 밖에서 잠시 뒤 다시 해 주세요",
+                                android.widget.Toast.LENGTH_LONG).show();
+                    } else prefs().edit().remove("place_" + key).apply();
+                    showSettings();
+                }).show()));
+    }
+
+    private void toggleRow(LinearLayout list, String key, String label) {
+        boolean on = prefs().getBoolean(key, true);
+        list.addView(row(label, on ? "켬" : "끔", v -> { prefs().edit().putBoolean(key, !on).apply(); showSettings(); }));
     }
 
     private void chooseGapFor(String key, String title) {

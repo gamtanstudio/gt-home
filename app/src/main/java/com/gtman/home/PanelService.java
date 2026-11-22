@@ -17,6 +17,8 @@ import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.location.Location;
+import android.net.Uri;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
@@ -108,6 +110,7 @@ public class PanelService extends AccessibilityService {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         loadPhotos();
         setupMedia();
+        startAuto();
         ui.post(syncTick);
         ui.postDelayed(slideTick, interval());
     }
@@ -422,6 +425,19 @@ public class PanelService extends AccessibilityService {
         LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(-1, -2);
         qlp.topMargin = dp(10);
         col.addView(quick, qlp);
+
+        LinearLayout go = new LinearLayout(this);
+        TextView gh = chip("🏠  집", v -> goPlace("home"));
+        gh.setTextSize(13);
+        go.addView(gh, new LinearLayout.LayoutParams(0, -2, 1f));
+        View sp2 = new View(this);
+        go.addView(sp2, new LinearLayout.LayoutParams(dp(10), 1));
+        TextView gs = chip("📷  사진관", v -> goPlace("studio"));
+        gs.setTextSize(13);
+        go.addView(gs, new LinearLayout.LayoutParams(0, -2, 1f));
+        LinearLayout.LayoutParams glp2 = new LinearLayout.LayoutParams(-1, -2);
+        glp2.topMargin = dp(8);
+        col.addView(go, glp2);
 
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
@@ -827,7 +843,7 @@ public class PanelService extends AccessibilityService {
         }
     }
 
-    private void refreshMedia() { refreshMedia0(); updateStrip(); }
+    private void refreshMedia() { noteMusic(); refreshMedia0(); updateStrip(); }
 
     private void refreshMedia0() {
         if (mTitle == null) return;
@@ -1056,6 +1072,7 @@ public class PanelService extends AccessibilityService {
     }
 
     void setMode(int m) {
+        if (!autoChanging) autoShrunk = false;
         if (m == MODE_MINI) m = MODE_STRIP;   // 세로 막대는 없앰 → 가로 막대로
         if (sideHost != null && splitLayout(this)) {
             mode = (m == MODE_WEB) ? MODE_WEB : MODE_FULL;
@@ -1444,6 +1461,218 @@ public class PanelService extends AccessibilityService {
         if (pill == null) return;
         try { wm.removeView(pill); } catch (Exception ignored) { }
         pill = null;
+    }
+
+    // ------------------------------------------------------------------
+    // 자동화: 달리면 작게/서면 크게, 집·사진관 바로 안내, 시동 걸면 음악·출근길 안내
+    // ------------------------------------------------------------------
+
+    private android.location.LocationManager locMgr;
+    Location lastLoc;
+    private long fastSince = 0, slowSince = 0;
+    private boolean autoShrunk = false, autoChanging = false;
+    private int autoFrom = MODE_FULL;
+    private FrameLayout askPill;
+
+    private final android.location.LocationListener locListener = new android.location.LocationListener() {
+        @Override public void onLocationChanged(Location l) { lastLoc = l; onSpeed(l.hasSpeed() ? l.getSpeed() : -1f); }
+        @Override public void onStatusChanged(String p, int s, android.os.Bundle b) { }
+        @Override public void onProviderEnabled(String p) { }
+        @Override public void onProviderDisabled(String p) { }
+    };
+
+    private void startAuto() {
+        startLocation();
+        ui.post(aliveTick);
+        try {
+            android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);
+            registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, Intent i) { ui.removeCallbacks(aliveTick); ui.post(aliveTick); }
+            }, f);
+        } catch (Exception ignored) { }
+    }
+
+    void startLocation() {
+        if (locMgr != null) return;
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        try {
+            locMgr = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+            Location k = locMgr.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
+            if (k != null) lastLoc = k;
+            locMgr.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 1000, 0, locListener, Looper.getMainLooper());
+        } catch (Exception e) { locMgr = null; }
+    }
+
+    /** 15km/h 넘게 3초 달리면 곡명 막대로, 5초 서 있으면 원래대로 */
+    private void onSpeed(float sp) {
+        if (!prefs().getBoolean("auto_size", true) || splitLayout(this)) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        if (sp >= 4.2f) {
+            slowSince = 0;
+            if (fastSince == 0) fastSince = now;
+            if (now - fastSince >= 3000 && !autoShrunk && (mode == MODE_FULL || mode == MODE_WEB) && videoRoot == null) {
+                autoFrom = mode;
+                autoChanging = true;
+                setMode(MODE_STRIP);
+                autoChanging = false;
+                autoShrunk = true;
+            }
+        } else if (sp >= 0 && sp < 0.8f) {
+            fastSince = 0;
+            if (slowSince == 0) slowSince = now;
+            if (now - slowSince >= 5000 && autoShrunk && mode == MODE_STRIP) {
+                autoChanging = true;
+                setMode(autoFrom);
+                autoChanging = false;
+                autoShrunk = false;
+            }
+        } else {
+            fastSince = 0;
+            slowSince = 0;
+        }
+    }
+
+    /** 집·사진관: 저장된 위치로 네비 길안내 바로 시작 */
+    void goPlace(String key) {
+        String name = key.equals("home") ? "집" : "감탄사진관";
+        String v = prefs().getString("place_" + key, null);
+        ComponentName nav = navApp(this);
+        String navPkg = nav == null ? "" : nav.getPackageName();
+        String uri;
+        if (v == null) {
+            if (key.equals("home")) { toast("⚙에서 집 위치를 먼저 저장해 주세요"); return; }
+            uri = navPkg.equals("com.nhn.android.nmap")
+                    ? "nmap://search?query=" + Uri.encode(name) + "&appname=" + getPackageName()
+                    : "geo:0,0?q=" + Uri.encode(name);
+        } else {
+            String[] ll = v.split(",");
+            if (navPkg.equals("com.nhn.android.nmap"))
+                uri = "nmap://navigation?dlat=" + ll[0] + "&dlng=" + ll[1] + "&dname=" + Uri.encode(name) + "&appname=" + getPackageName();
+            else if (navPkg.equals("com.skt.tmap.ku"))
+                uri = "tmap://route?goalx=" + ll[1] + "&goaly=" + ll[0] + "&goalname=" + Uri.encode(name);
+            else
+                uri = "geo:" + ll[0] + "," + ll[1] + "?q=" + ll[0] + "," + ll[1] + "(" + Uri.encode(name) + ")";
+        }
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(uri));
+        if (!navPkg.isEmpty() && !uri.startsWith("geo:")) i.setPackage(navPkg);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try { startActivity(i); }
+        catch (Exception e) {
+            try { Intent g = new Intent(Intent.ACTION_VIEW, Uri.parse(uri)); g.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(g); }
+            catch (Exception e2) { toast("네비에서 열 수 없어요"); }
+        }
+    }
+
+    boolean savePlace(String key) {
+        if (lastLoc == null) return false;
+        prefs().edit().putString("place_" + key, lastLoc.getLatitude() + "," + lastLoc.getLongitude()).apply();
+        return true;
+    }
+
+    private void toast(String s) {
+        try { android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show(); } catch (Exception ignored) { }
+    }
+
+    /** 30초마다 살아 있다고 적어 둠 — 3분 넘게 비어 있었으면 시동을 새로 건 것 */
+    private final Runnable aliveTick = new Runnable() {
+        @Override public void run() {
+            long now = System.currentTimeMillis();
+            long last = prefs().getLong("alive_at", 0);
+            prefs().edit().putLong("alive_at", now).apply();
+            if (now - last > 3 * 60 * 1000L) ui.postDelayed(PanelService.this::onNewDrive, 6000);
+            ui.removeCallbacks(this);
+            ui.postDelayed(this, 30000);
+        }
+    };
+
+    private void onNewDrive() {
+        startLocation();
+        if (prefs().getBoolean("auto_music", true)) ui.postDelayed(this::resumeMusic, 4000);
+        if (prefs().getBoolean("commute_ask", true)) ui.postDelayed(this::maybeCommute, 2000);
+    }
+
+    private void noteMusic() {
+        try {
+            if (ctrl == null) return;
+            PlaybackState st = ctrl.getPlaybackState();
+            if (st != null && st.getState() == PlaybackState.STATE_PLAYING)
+                prefs().edit().putString("last_music_pkg", ctrl.getPackageName()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    /** 시동 걸면 마지막에 듣던 음악 이어서 */
+    private void resumeMusic() {
+        String last = prefs().getString("last_music_pkg", null);
+        if (last == null) return;
+        try {
+            pickController();
+            if (ctrl != null) {
+                PlaybackState st = ctrl.getPlaybackState();
+                if (st != null && st.getState() == PlaybackState.STATE_PLAYING) return;
+                if (last.equals(ctrl.getPackageName())) { ctrl.getTransportControls().play(); return; }
+            }
+        } catch (Exception ignored) { }
+        try {
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am.isMusicActive()) return;
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY));
+            am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY));
+        } catch (Exception ignored) { }
+    }
+
+    /** 출근길(화·수 빼고, 아침 7~11시) 시동 걸면 사진관 안내를 물어봄 — 하루 한 번 */
+    private void maybeCommute() {
+        String studio = prefs().getString("place_studio", null);
+        if (studio == null) return;
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int dow = c.get(java.util.Calendar.DAY_OF_WEEK), hour = c.get(java.util.Calendar.HOUR_OF_DAY);
+        if (dow == java.util.Calendar.TUESDAY || dow == java.util.Calendar.WEDNESDAY) return;
+        if (hour < 7 || hour >= 11) return;
+        String today = c.get(java.util.Calendar.YEAR) + "-" + c.get(java.util.Calendar.DAY_OF_YEAR);
+        if (today.equals(prefs().getString("commute_day", ""))) return;
+        if (lastLoc != null) {
+            String[] ll = studio.split(",");
+            float[] d = new float[1];
+            Location.distanceBetween(lastLoc.getLatitude(), lastLoc.getLongitude(), Double.parseDouble(ll[0]), Double.parseDouble(ll[1]), d);
+            if (d[0] < 1000) return;   // 이미 사진관 근처
+        }
+        prefs().edit().putString("commute_day", today).apply();
+        showAsk("📷  사진관으로 안내할까요?", () -> goPlace("studio"));
+    }
+
+    private void showAsk(String text, Runnable yes) {
+        hideAsk();
+        askPill = new FrameLayout(this);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(20), dp(8), dp(8), dp(8));
+        row.setBackground(round(Color.parseColor("#E6111620"), dp(28)));
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(17);
+        row.addView(t);
+        TextView ok = pillBtn("안내 시작", v -> { hideAsk(); yes.run(); });
+        ok.setBackground(round(Color.parseColor("#3D6FE0"), dp(22)));
+        LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(-2, -2);
+        ol.leftMargin = dp(16);
+        row.addView(ok, ol);
+        row.addView(pillBtn("✕", v -> hideAsk()));
+        askPill.addView(row, new FrameLayout.LayoutParams(-2, -2));
+        WindowManager.LayoutParams pl = new WindowManager.LayoutParams(-2, -2,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        pl.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        pl.y = statusBarH() + dp(16);
+        try { wm.addView(askPill, pl); } catch (Exception e) { askPill = null; return; }
+        ui.postDelayed(this::hideAsk, 25000);
+    }
+
+    private void hideAsk() {
+        if (askPill == null) return;
+        try { wm.removeView(askPill); } catch (Exception ignored) { }
+        askPill = null;
     }
 
     private void openHome(String what, int slot) {
