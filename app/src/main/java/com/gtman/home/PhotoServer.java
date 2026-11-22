@@ -136,6 +136,8 @@ public class PhotoServer {
                 changed();
             } else if (path.equals("/hud")) {
                 send(out, 200, "text/html; charset=utf-8", readAsset(c, "hud.html"));
+            } else if (path.equals("/nosleep.webm")) {
+                send(out, 200, "video/webm", readAsset(c, "nosleep.webm"));
             } else if (path.equals("/hud.json")) {
                 String j = PanelService.hudJson;
                 send(out, 200, "application/json; charset=utf-8", (j == null ? "{}" : j).getBytes("UTF-8"));

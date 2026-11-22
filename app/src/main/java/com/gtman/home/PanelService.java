@@ -1501,7 +1501,7 @@ public class PanelService extends AccessibilityService {
 
     private final Runnable hudTick = new Runnable() {
         @Override public void run() {
-            if (!prefs().getBoolean("hud_on", false)) { hudJson = "{}"; return; }
+            if (!prefs().getBoolean("hud_on", true)) { hudJson = "{}"; return; }
             PhotoServer.start(PanelService.this);
             try {
                 org.json.JSONObject j = new org.json.JSONObject();

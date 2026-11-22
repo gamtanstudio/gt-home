@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         homeMode = false;
-        if (!prefs().getBoolean("hud_on", false)) PhotoServer.stop();
+        if (!prefs().getBoolean("hud_on", true)) PhotoServer.stop();
         PhotoServer.onChange = null;
     }
 
@@ -235,7 +235,7 @@ public class MainActivity extends Activity {
         list.addView(row("패널 위 여백", prefs().getInt("top_gap", 72) + "", v -> chooseGapFor("top_gap", "패널 위 여백")));
         list.addView(row("패널 아래 여백", prefs().getInt("bottom_gap", 84) + "", v -> chooseGapFor("bottom_gap", "패널 아래 여백")));
         list.addView(row("사진 넘김 간격", prefs().getInt("interval", 15) + "초", v -> chooseInterval()));
-        list.addView(row("🔆 HUD (옛날 폰)", prefs().getBoolean("hud_on", false) ? "켬" : "끔", v -> showHud()));
+        list.addView(row("🔆 HUD (옛날 폰)", prefs().getBoolean("hud_on", true) ? "켬" : "끔", v -> showHud()));
         list.addView(row("📲 휴대폰 사진 보내기", PhotoServer.photos(this).size() + "장", v -> showReceive()));
         list.addView(row("사진 앨범 (서버)", PanelService.albumToken(this) == null ? "안 됨" : "연결됨", v -> new AlertDialog.Builder(this).setTitle("사진 앨범 연결")
                 .setItems(new String[]{"GT-0003 액자로 연결", "직접 입력", "연결 끊기"}, (d, w) -> {
@@ -679,7 +679,7 @@ public class MainActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.addView(title("휴대폰 카메라로 찍기"), new LinearLayout.LayoutParams(0, -2, 1f));
-        top.addView(small("닫기", v -> { if (!prefs().getBoolean("hud_on", false)) PhotoServer.stop(); PhotoServer.onChange = null; showSettings(); }));
+        top.addView(small("닫기", v -> { if (!prefs().getBoolean("hud_on", true)) PhotoServer.stop(); PhotoServer.onChange = null; showSettings(); }));
         box.addView(top);
         LinearLayout mid = new LinearLayout(this);
         mid.setGravity(Gravity.CENTER);
