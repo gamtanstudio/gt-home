@@ -18,8 +18,10 @@ body.v #w{transform:scaleY(-1)}
 #song{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}
 #call{position:absolute;left:0;right:0;top:6vh;margin:auto;width:fit-content;max-width:90vw;display:none;align-items:center;gap:3vw;background:#0f3d23;border:.4vh solid #3dfc8a;border-radius:6vh;padding:2vh 5vw;font-size:9vh;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #call.on{display:flex}
+body.night #w{opacity:.55}
+#ns{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
 #off{position:absolute;bottom:2vh;right:3vw;font-size:3vh;color:#444}
-</style></head><body class=h>
+</style></head><body>
 <div id=w>
  <div id=call>📞 <span id=cname></span></div>
  <div id=turn><div id=arrow></div><div id=tx><div id=dist></div><div id=road></div></div></div>
@@ -27,11 +29,14 @@ body.v #w{transform:scaleY(-1)}
  <div id=bot><span id=clk></span><span id=song></span></div>
 </div>
 <div id=off></div>
+<video id=ns src=/nosleep.webm muted loop playsinline></video>
 <script>
 const $=id=>document.getElementById(id);
-const modes=['h','v',''];let mi=0;try{mi=+localStorage.hudm||0}catch(e){}
+const modes=['','h','v'];let mi=0;try{mi=+localStorage.hudm||0}catch(e){}
 function setM(){document.body.className=modes[mi%3];try{localStorage.hudm=mi%3}catch(e){}}setM();
-document.body.onclick=()=>{if(!document.fullscreenElement&&document.documentElement.requestFullscreen){document.documentElement.requestFullscreen().catch(()=>{mi++;setM()});return}mi++;setM()};
+function keep(){try{$('ns').play()}catch(e){}}
+keep();
+document.body.onclick=()=>{keep();if(!document.fullscreenElement&&document.documentElement.requestFullscreen){document.documentElement.requestFullscreen().catch(()=>{mi++;setM()});return}mi++;setM()};
 function arrow(s){
  if(/유턴|U턴/.test(s))return'↶';
  if(/좌회전|왼쪽/.test(s))return'↰';
@@ -46,6 +51,7 @@ async function tick(){
   const d=await (await fetch('/hud.json',{cache:'no-store'})).json();fail=0;$('off').textContent='';
   $('spd').textContent=d.speed>=0?d.speed:'--';
   $('clk').textContent=d.time||'';
+  const hh=+((d.time||'12').split(':')[0]);document.body.classList.toggle('night',hh>=19||hh<6);
   $('song').textContent=d.song?('♪ '+d.song):'';
   const nav=((d.navTitle||'')+' '+(d.navText||'')).trim();
   const m=nav.match(/(\d+(?:\.\d+)?)\s*(km|m)\b/i);
