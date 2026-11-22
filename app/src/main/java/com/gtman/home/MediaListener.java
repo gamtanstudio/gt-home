@@ -9,6 +9,15 @@ import android.service.notification.StatusBarNotification;
 public class MediaListener extends NotificationListenerService {
     static volatile String navTitle = "", navText = "";
     static volatile long navAt = 0;
+    // 전화: 올인원 블루투스 전화 앱 알림
+    static volatile String callText = "";
+    static volatile long callAt = 0;
+
+    static boolean isPhone(String pkg) {
+        String p = pkg.toLowerCase();
+        return p.contains("bt") || p.contains("bluetooth") || p.contains("dialer") || p.contains("incall")
+                || p.contains("telecom") || p.contains("phone") || p.contains("contacts");
+    }
 
     private static boolean isNav(String pkg) {
         return pkg.equals("com.nhn.android.nmap") || pkg.equals("com.skt.tmap.ku")
@@ -18,6 +27,15 @@ public class MediaListener extends NotificationListenerService {
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         try {
+            Notification n = sbn.getNotification();
+            if (Notification.CATEGORY_CALL.equals(n.category) || (isPhone(sbn.getPackageName()) && n.extras != null
+                    && n.extras.getCharSequence(Notification.EXTRA_TITLE) != null)) {
+                CharSequence t = n.extras.getCharSequence(Notification.EXTRA_TITLE);
+                CharSequence x = n.extras.getCharSequence(Notification.EXTRA_TEXT);
+                callText = ((t == null ? "" : t) + " " + (x == null ? "" : x)).trim();
+                callAt = System.currentTimeMillis();
+                return;
+            }
             if (!isNav(sbn.getPackageName())) return;
             Bundle e = sbn.getNotification().extras;
             CharSequence t = e.getCharSequence(Notification.EXTRA_TITLE);
@@ -32,5 +50,6 @@ public class MediaListener extends NotificationListenerService {
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
         if (isNav(sbn.getPackageName())) { navTitle = ""; navText = ""; }
+        if (Notification.CATEGORY_CALL.equals(sbn.getNotification().category) || isPhone(sbn.getPackageName())) callText = "";
     }
 }

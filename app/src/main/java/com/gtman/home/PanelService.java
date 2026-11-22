@@ -136,6 +136,12 @@ public class PanelService extends AccessibilityService {
         CharSequence p = e.getPackageName();
         if (p == null) return;
         String pkg = p.toString();
+        if (MediaListener.isPhone(pkg) && !pkg.equals("com.android.systemui")) {
+            StringBuilder sb = new StringBuilder();
+            for (CharSequence cs : e.getText()) if (cs != null) sb.append(cs).append(' ');
+            String txt = sb.toString().trim();
+            if (!txt.isEmpty()) { MediaListener.callText = txt; MediaListener.callAt = System.currentTimeMillis(); }
+        }
         if (pkg.equals("com.android.systemui") || pkg.contains("inputmethod") || pkg.contains("keyboard")
                 || pkg.equals(defaultIme())) return;
         if (splitLayout(this)) { onSplitEvent(pkg, e.getClassName()); return; }
@@ -1513,6 +1519,8 @@ public class PanelService extends AccessibilityService {
                 boolean fresh = System.currentTimeMillis() - MediaListener.navAt < 10 * 60 * 1000L;
                 j.put("navTitle", fresh ? MediaListener.navTitle : "");
                 j.put("navText", fresh ? MediaListener.navText : "");
+                boolean callNow = System.currentTimeMillis() - MediaListener.callAt < 40000 && !MediaListener.callText.isEmpty();
+                j.put("call", callNow ? MediaListener.callText : "");
                 hudJson = j.toString();
             } catch (Exception ignored) { }
             ui.postDelayed(this, 500);
