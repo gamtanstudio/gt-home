@@ -218,6 +218,8 @@ public class MainActivity extends Activity {
         placeRow(list, "home", "🏠 집 위치");
         placeRow(list, "studio", "📷 사진관 위치");
         toggleRow(list, "auto_size", "달리면 작게 · 서면 크게");
+        toggleRow(list, "greet", "시동 걸면 인사말");
+        list.addView(row("인사말 들어보기", "▶", v -> { if (PanelService.inst != null) PanelService.inst.greet(); }));
         toggleRow(list, "auto_music", "시동 걸면 음악 이어 듣기");
         toggleRow(list, "commute_ask", "출근길 사진관 안내 묻기");
         list.addView(row("홈 누르면 네비 자동 실행", auto ? "켬" : "끔", v -> {

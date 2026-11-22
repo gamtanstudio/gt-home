@@ -1587,8 +1587,44 @@ public class PanelService extends AccessibilityService {
 
     private void onNewDrive() {
         startLocation();
-        if (prefs().getBoolean("auto_music", true)) ui.postDelayed(this::resumeMusic, 4000);
+        if (prefs().getBoolean("greet", true)) ui.postDelayed(this::greet, 1500);
+        if (prefs().getBoolean("auto_music", true)) ui.postDelayed(this::resumeMusic, prefs().getBoolean("greet", true) ? 9000 : 4000);
         if (prefs().getBoolean("commute_ask", true)) ui.postDelayed(this::maybeCommute, 2000);
+    }
+
+    // ---------- 시동 인사 (기기의 한국어 음성으로 읽어 줌) ----------
+    private android.speech.tts.TextToSpeech tts;
+    private boolean ttsReady = false;
+    private String pendingSay = null;
+
+    void greet() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        String hi = h < 11 ? "좋은 아침이에요." : h < 17 ? "좋은 오후예요." : "좋은 저녁이에요.";
+        say("싼슬라에 오신 것을 환영합니다. " + hi + " 오늘도 즐거운 운행 되세요. 자, 출발!");
+    }
+
+    void say(String text) {
+        if (tts != null && ttsReady) { speakNow(text); return; }
+        pendingSay = text;
+        if (tts != null) return;
+        tts = new android.speech.tts.TextToSpeech(getApplicationContext(), st -> {
+            if (st == android.speech.tts.TextToSpeech.SUCCESS) {
+                int r = tts.setLanguage(java.util.Locale.KOREAN);
+                ttsReady = r != android.speech.tts.TextToSpeech.LANG_MISSING_DATA && r != android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED;
+                if (!ttsReady) toast("이 기기에 한국어 음성이 없어요");
+                tts.setSpeechRate(1.0f);
+                tts.setPitch(1.05f);
+                if (ttsReady && pendingSay != null) { String t = pendingSay; pendingSay = null; ui.post(() -> speakNow(t)); }
+            } else {
+                toast("이 기기에서 음성을 쓸 수 없어요");
+            }
+        });
+    }
+
+    private void speakNow(String text) {
+        android.os.Bundle b = new android.os.Bundle();
+        b.putInt(android.speech.tts.TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC);
+        tts.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, b, "greet");
     }
 
     private void noteMusic() {
