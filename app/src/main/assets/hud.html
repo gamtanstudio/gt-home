@@ -1,0 +1,57 @@
+<!doctype html><html lang=ko><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,user-scalable=no">
+<title>싼슬라 HUD</title><style>
+html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;font-family:-apple-system,"Noto Sans KR",sans-serif;-webkit-user-select:none;user-select:none}
+#w{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vh;transform-origin:center}
+body.h #w{transform:scaleX(-1)}
+body.v #w{transform:scaleY(-1)}
+#turn{display:flex;align-items:center;gap:4vw;min-height:22vh;opacity:0;transition:opacity .4s}
+#turn.on{opacity:1}
+#arrow{font-size:20vh;line-height:1;color:#3dfc8a;font-weight:700}
+#tx{display:flex;flex-direction:column}
+#dist{font-size:13vh;font-weight:800;color:#3dfc8a;line-height:1}
+#road{font-size:5.5vh;color:#d8ffe6;max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sp{display:flex;align-items:baseline;gap:1.5vw}
+#spd{font-size:30vh;font-weight:800;line-height:.9;letter-spacing:-.02em}
+#unit{font-size:6vh;color:#9fb3c8;font-weight:600}
+#bot{display:flex;gap:5vw;font-size:5vh;color:#9fb3c8;max-width:92vw}
+#song{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw}
+#off{position:absolute;bottom:2vh;right:3vw;font-size:3vh;color:#444}
+</style></head><body class=h>
+<div id=w>
+ <div id=turn><div id=arrow></div><div id=tx><div id=dist></div><div id=road></div></div></div>
+ <div id=sp><div id=spd>--</div><div id=unit>km/h</div></div>
+ <div id=bot><span id=clk></span><span id=song></span></div>
+</div>
+<div id=off></div>
+<script>
+const $=id=>document.getElementById(id);
+const modes=['h','v',''];let mi=0;try{mi=+localStorage.hudm||0}catch(e){}
+function setM(){document.body.className=modes[mi%3];try{localStorage.hudm=mi%3}catch(e){}}setM();
+document.body.onclick=()=>{if(!document.fullscreenElement&&document.documentElement.requestFullscreen){document.documentElement.requestFullscreen().catch(()=>{mi++;setM()});return}mi++;setM()};
+function arrow(s){
+ if(/유턴|U턴/.test(s))return'↶';
+ if(/좌회전|왼쪽/.test(s))return'↰';
+ if(/우회전|오른쪽/.test(s))return'↱';
+ if(/목적지|도착/.test(s))return'⚑';
+ if(/직진|고속도로|진입|출구/.test(s))return'↑';
+ return s?'↑':'';
+}
+let fail=0;
+async function tick(){
+ try{
+  const d=await (await fetch('/hud.json',{cache:'no-store'})).json();fail=0;$('off').textContent='';
+  $('spd').textContent=d.speed>=0?d.speed:'--';
+  $('clk').textContent=d.time||'';
+  $('song').textContent=d.song?('♪ '+d.song):'';
+  const nav=((d.navTitle||'')+' '+(d.navText||'')).trim();
+  const m=nav.match(/(\d+(?:\.\d+)?)\s*(km|m)\b/i);
+  $('dist').textContent=m?m[1]+m[2]:'';
+  $('road').textContent=nav.replace(m?m[0]:'','').trim();
+  $('arrow').textContent=arrow(nav);
+  $('turn').classList.toggle('on',!!nav);
+ }catch(e){if(++fail>4)$('off').textContent='싼슬라 연결 대기';}
+ setTimeout(tick,500);
+}
+tick();
+</script></body></html>
