@@ -1490,8 +1490,40 @@ public class PanelService extends AccessibilityService {
         @Override public void onProviderDisabled(String p) { }
     };
 
+    // ---------- HUD: 옛날 폰에 띄울 속도·안내·곡명 ----------
+    static volatile String hudJson = "{}";
+
+    private final Runnable hudTick = new Runnable() {
+        @Override public void run() {
+            if (!prefs().getBoolean("hud_on", false)) { hudJson = "{}"; return; }
+            PhotoServer.start(PanelService.this);
+            try {
+                org.json.JSONObject j = new org.json.JSONObject();
+                int sp = -1;
+                if (lastLoc != null && System.currentTimeMillis() - lastLoc.getTime() < 6000 && lastLoc.hasSpeed())
+                    sp = Math.round(lastLoc.getSpeed() * 3.6f);
+                j.put("speed", sp);
+                j.put("time", new java.text.SimpleDateFormat("HH:mm", java.util.Locale.KOREA).format(new java.util.Date()));
+                String song = "";
+                if (mTitle != null) {
+                    String t = String.valueOf(mTitle.getText());
+                    if (!t.isEmpty() && !t.equals("재생 중인 음악 없음") && !t.equals("음악")) song = t;
+                }
+                j.put("song", song);
+                boolean fresh = System.currentTimeMillis() - MediaListener.navAt < 10 * 60 * 1000L;
+                j.put("navTitle", fresh ? MediaListener.navTitle : "");
+                j.put("navText", fresh ? MediaListener.navText : "");
+                hudJson = j.toString();
+            } catch (Exception ignored) { }
+            ui.postDelayed(this, 500);
+        }
+    };
+
+    void startHud() { ui.removeCallbacks(hudTick); ui.post(hudTick); }
+
     private void startAuto() {
         startLocation();
+        startHud();
         ui.post(aliveTick);
         try {
             android.content.IntentFilter f = new android.content.IntentFilter(Intent.ACTION_SCREEN_ON);

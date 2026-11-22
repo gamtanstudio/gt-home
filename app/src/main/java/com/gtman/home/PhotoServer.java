@@ -134,6 +134,11 @@ public class PhotoServer {
                 if (n != null && n.matches("[0-9A-Za-z_]+\\.jpg")) new File(dir(c), n).delete();
                 send(out, 200, "text/plain", "ok".getBytes());
                 changed();
+            } else if (path.equals("/hud")) {
+                send(out, 200, "text/html; charset=utf-8", readAsset(c, "hud.html"));
+            } else if (path.equals("/hud.json")) {
+                String j = PanelService.hudJson;
+                send(out, 200, "application/json; charset=utf-8", (j == null ? "{}" : j).getBytes("UTF-8"));
             } else if (path.equals("/list")) {
                 StringBuilder sb = new StringBuilder("[");
                 for (File f : photos(c)) { if (sb.length() > 1) sb.append(','); sb.append('"').append(f.getName()).append('"'); }
@@ -150,6 +155,16 @@ public class PhotoServer {
             s.close();
         } catch (Exception e) {
             try { s.close(); } catch (Exception ignored) { }
+        }
+    }
+
+    private static byte[] readAsset(Context c, String name) throws Exception {
+        try (InputStream in = c.getAssets().open(name)) {
+            ByteArrayOutputStream b = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) b.write(buf, 0, n);
+            return b.toByteArray();
         }
     }
 

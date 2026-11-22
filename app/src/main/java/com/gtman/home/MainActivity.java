@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         homeMode = false;
-        PhotoServer.stop();
+        if (!prefs().getBoolean("hud_on", false)) PhotoServer.stop();
         PhotoServer.onChange = null;
     }
 
@@ -235,6 +235,7 @@ public class MainActivity extends Activity {
         list.addView(row("패널 위 여백", prefs().getInt("top_gap", 72) + "", v -> chooseGapFor("top_gap", "패널 위 여백")));
         list.addView(row("패널 아래 여백", prefs().getInt("bottom_gap", 84) + "", v -> chooseGapFor("bottom_gap", "패널 아래 여백")));
         list.addView(row("사진 넘김 간격", prefs().getInt("interval", 15) + "초", v -> chooseInterval()));
+        list.addView(row("🔆 HUD (옛날 폰)", prefs().getBoolean("hud_on", false) ? "켬" : "끔", v -> showHud()));
         list.addView(row("📲 휴대폰 사진 보내기", PhotoServer.photos(this).size() + "장", v -> showReceive()));
         list.addView(row("사진 앨범 (서버)", PanelService.albumToken(this) == null ? "안 됨" : "연결됨", v -> new AlertDialog.Builder(this).setTitle("사진 앨범 연결")
                 .setItems(new String[]{"GT-0003 액자로 연결", "직접 입력", "연결 끊기"}, (d, w) -> {
@@ -620,6 +621,55 @@ public class MainActivity extends Activity {
     // 부품
     // ======================================================================
 
+    // HUD: 옛날 폰으로 QR 찍으면 속도·안내 화면이 열림
+    private void showHud() {
+        homeMode = false;
+        otherScreen = true;
+        prefs().edit().putBoolean("hud_on", true).apply();
+        PhotoServer.start(this);
+        if (PanelService.inst != null) PanelService.inst.startHud();
+        LinearLayout box = page();
+        LinearLayout top = new LinearLayout(this);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.addView(title("HUD 폰으로 찍기"), new LinearLayout.LayoutParams(0, -2, 1f));
+        top.addView(small("HUD 끄기", v -> { prefs().edit().putBoolean("hud_on", false).apply(); PhotoServer.stop(); showSettings(); }));
+        top.addView(small("닫기", v -> showSettings()));
+        box.addView(top);
+        LinearLayout mid = new LinearLayout(this);
+        mid.setGravity(Gravity.CENTER);
+        String base = PhotoServer.address();
+        if (base == null || !PhotoServer.running()) {
+            TextView no = new TextView(this);
+            no.setText("휴대폰 핫스팟에 연결해 주세요");
+            no.setTextColor(Color.WHITE);
+            no.setTextSize(20);
+            mid.addView(no);
+        } else {
+            String url = base + "/hud";
+            mid.addView(qrView(url), new LinearLayout.LayoutParams(dp(300), dp(300)));
+            TextView addr = new TextView(this);
+            addr.setText(url);
+            addr.setTextColor(Color.parseColor("#8FA3BF"));
+            addr.setTextSize(16);
+            addr.setPadding(dp(40), 0, 0, 0);
+            mid.addView(addr);
+        }
+        box.addView(mid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        setContentView(box);
+    }
+
+    private ImageView qrView(String url) {
+        ImageView qr = new ImageView(this);
+        try {
+            com.google.zxing.common.BitMatrix bm = new com.google.zxing.qrcode.QRCodeWriter()
+                    .encode(url, com.google.zxing.BarcodeFormat.QR_CODE, 600, 600);
+            Bitmap b = Bitmap.createBitmap(600, 600, Bitmap.Config.RGB_565);
+            for (int x = 0; x < 600; x++) for (int y = 0; y < 600; y++) b.setPixel(x, y, bm.get(x, y) ? Color.BLACK : Color.WHITE);
+            qr.setImageBitmap(b);
+        } catch (Exception ignored) { }
+        return qr;
+    }
+
     // 휴대폰 → 차 사진 보내기: QR 찍으면 휴대폰에서 사진 고르는 화면이 열림
     private void showReceive() {
         homeMode = false;
@@ -629,7 +679,7 @@ public class MainActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.addView(title("휴대폰 카메라로 찍기"), new LinearLayout.LayoutParams(0, -2, 1f));
-        top.addView(small("닫기", v -> { PhotoServer.stop(); PhotoServer.onChange = null; showSettings(); }));
+        top.addView(small("닫기", v -> { if (!prefs().getBoolean("hud_on", false)) PhotoServer.stop(); PhotoServer.onChange = null; showSettings(); }));
         box.addView(top);
         LinearLayout mid = new LinearLayout(this);
         mid.setGravity(Gravity.CENTER);
