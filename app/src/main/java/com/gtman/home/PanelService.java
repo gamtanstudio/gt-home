@@ -1755,7 +1755,7 @@ public class PanelService extends AccessibilityService {
         photos.clear();
         File dir = new File(getFilesDir(), "album");
         File[] fs = dir.listFiles();
-        if (fs != null && fs.length > 0 && prefs().getString("token", null) != null) {
+        if (fs != null && fs.length > 0 && albumToken(this) != null) {
             List<File> l = new ArrayList<>();
             for (File f : fs) if (f.length() > 0 && !f.getName().endsWith(".tmp")) l.add(f);
             Collections.sort(l, (a, b) -> a.getName().compareTo(b.getName()));
@@ -1821,8 +1821,16 @@ public class PanelService extends AccessibilityService {
         }
     };
 
+    /** 차 앨범으로 쓸 테스트 액자 GT-0003 (설정에서 골라야 연결됨) */
+    static final String CAR_ALBUM = "e7c1d842-0762-46a5-8620-048f90b5e80c";
+
+    static String albumToken(Context c) {
+        String t = c.getSharedPreferences("gthome", MODE_PRIVATE).getString("token", null);
+        return t == null || t.isEmpty() ? null : t;
+    }
+
     void syncAlbum() {
-        final String token = prefs().getString("token", null);
+        final String token = albumToken(this);
         if (token == null) return;
         new Thread(() -> {
             try {
@@ -1845,10 +1853,11 @@ public class PanelService extends AccessibilityService {
                 dir.mkdirs();
                 Set<String> keep = new HashSet<>();
                 boolean changed = false;
-                for (int i = 0; i < arr.length(); i++) {
+                for (int i = 0; i < Math.min(arr.length(), 60); i++) {   // 데이터 아끼려고 최대 60장
                     String path = arr.getJSONObject(i).optString("path", null);
                     if (path == null || path.isEmpty()) continue;
-                    String name = String.format(Locale.US, "%04d_", i) + path.replaceAll("[^A-Za-z0-9._-]", "_");
+                    // 순서가 바뀌어도 다시 받지 않게 이름은 경로로만
+                    String name = path.replaceAll("[^A-Za-z0-9._-]", "_");
                     keep.add(name);
                     File f = new File(dir, name);
                     if (f.exists() && f.length() > 0) continue;

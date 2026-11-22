@@ -229,7 +229,14 @@ public class MainActivity extends Activity {
         list.addView(row("패널 위 여백", prefs().getInt("top_gap", 72) + "", v -> chooseGapFor("top_gap", "패널 위 여백")));
         list.addView(row("패널 아래 여백", prefs().getInt("bottom_gap", 84) + "", v -> chooseGapFor("bottom_gap", "패널 아래 여백")));
         list.addView(row("사진 넘김 간격", prefs().getInt("interval", 15) + "초", v -> chooseInterval()));
-        list.addView(row("사진 앨범 연결 (휴대폰 업로드)", prefs().getString("token", null) == null ? "안 됨" : "연결됨", v -> askToken()));
+        list.addView(row("사진 앨범 연결 (휴대폰 업로드)", PanelService.albumToken(this) == null ? "안 됨" : "연결됨", v -> new AlertDialog.Builder(this).setTitle("사진 앨범 연결")
+                .setItems(new String[]{"GT-0003 액자로 연결", "직접 입력", "연결 끊기"}, (d, w) -> {
+                    if (w == 0) prefs().edit().putString("token", PanelService.CAR_ALBUM).apply();
+                    else if (w == 1) { askToken(); return; }
+                    else prefs().edit().putString("token", "").apply();
+                    if (PanelService.inst != null) { PanelService.inst.loadPhotos(); PanelService.inst.syncAlbum(); }
+                    showSettings();
+                }).show()));
         list.addView(row("인터넷 첫 화면", prefs().getString("web_home", "https://m.naver.com/"), v -> askWebHome()));
         list.addView(row("업데이트", "지금 " + versionName(), v -> update()));
         list.addView(row("위 막대 색을 바탕과 같게", "배경화면 바꾸기", v -> darkWallpaper()));
@@ -342,11 +349,12 @@ public class MainActivity extends Activity {
     private void askToken() {
         final EditText et = new EditText(this);
         et.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        et.setText(prefs().getString("token", ""));
+        String cur = PanelService.albumToken(this);
+        et.setText(cur == null ? "" : cur);
         new AlertDialog.Builder(this).setTitle("앨범 토큰").setView(et)
                 .setPositiveButton("저장", (d, w) -> {
                     String t = et.getText().toString().trim();
-                    if (t.isEmpty()) prefs().edit().remove("token").apply();
+                    if (t.isEmpty()) prefs().edit().putString("token", "").apply();
                     else prefs().edit().putString("token", t).apply();
                     if (PanelService.inst != null) { PanelService.inst.loadPhotos(); PanelService.inst.syncAlbum(); }
                     showSettings();
