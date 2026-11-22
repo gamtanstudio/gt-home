@@ -1521,11 +1521,46 @@ public class PanelService extends AccessibilityService {
                 j.put("navText", fresh ? MediaListener.navText : "");
                 boolean callNow = System.currentTimeMillis() - MediaListener.callAt < 40000 && !MediaListener.callText.isEmpty();
                 j.put("call", callNow ? MediaListener.callText : "");
+                if (++navScanN % 2 == 0) navScreen = readNavScreen();
+                j.put("raw", navScreen);
                 hudJson = j.toString();
             } catch (Exception ignored) { }
             ui.postDelayed(this, 500);
         }
     };
+
+    private int navScanN = 0;
+    static volatile String navScreen = "";
+
+    /** 네이버 지도(내비) 화면에 떠 있는 글자를 읽어 옴 — 알림에 안내가 없어서 */
+    private String readNavScreen() {
+        try {
+            ComponentName nav = navApp(this);
+            String np = nav != null ? nav.getPackageName() : "com.nhn.android.nmap";
+            for (android.view.accessibility.AccessibilityWindowInfo w : getWindows()) {
+                android.view.accessibility.AccessibilityNodeInfo r = w.getRoot();
+                if (r == null || r.getPackageName() == null || !np.equals(r.getPackageName().toString())) continue;
+                StringBuilder sb = new StringBuilder();
+                collectText(r, sb, 0);
+                return sb.toString();
+            }
+        } catch (Exception ignored) { }
+        return "";
+    }
+
+    private void collectText(android.view.accessibility.AccessibilityNodeInfo n, StringBuilder sb, int depth) {
+        if (n == null || depth > 40 || sb.length() > 900) return;
+        if (n.isVisibleToUser()) {
+            CharSequence t = n.getText(), d = n.getContentDescription();
+            String id = n.getViewIdResourceName();
+            if (id != null) id = id.substring(id.indexOf('/') + 1);
+            if (t != null && t.toString().trim().length() > 0)
+                sb.append(id != null ? id + ":" : "").append(t.toString().trim()).append(" | ");
+            else if (d != null && d.toString().trim().length() > 0)
+                sb.append(id != null ? id + ":" : "").append("[").append(d.toString().trim()).append("] | ");
+        }
+        for (int i = 0; i < n.getChildCount(); i++) collectText(n.getChild(i), sb, depth + 1);
+    }
 
     void startHud() { ui.removeCallbacks(hudTick); ui.post(hudTick); }
 
