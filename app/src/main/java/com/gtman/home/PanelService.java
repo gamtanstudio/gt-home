@@ -1517,8 +1517,9 @@ public class PanelService extends AccessibilityService {
                 }
                 j.put("song", song);
                 boolean fresh = System.currentTimeMillis() - MediaListener.navAt < 10 * 60 * 1000L;
-                j.put("navTitle", fresh ? MediaListener.navTitle : "");
-                j.put("navText", fresh ? MediaListener.navText : "");
+                String[] pn = parseNavScreen(navScreen);
+                j.put("navTitle", pn != null ? pn[0] : fresh ? MediaListener.navTitle : "");
+                j.put("navText", pn != null ? pn[1] : fresh ? MediaListener.navText : "");
                 boolean callNow = System.currentTimeMillis() - MediaListener.callAt < 40000 && !MediaListener.callText.isEmpty();
                 j.put("call", callNow ? MediaListener.callText : "");
                 if (++navScanN % 2 == 0) navScreen = readNavScreen();
@@ -1546,6 +1547,51 @@ public class PanelService extends AccessibilityService {
             }
         } catch (Exception ignored) { }
         return "";
+    }
+
+    /** 네이버 지도 화면 글자 → {"44m 우회전", "어린이보호 30 (52m) · 9:17 · 13분 · 6.2km"} */
+    static String[] parseNavScreen(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        java.util.List<String> t = new java.util.ArrayList<>();
+        for (String x : raw.split("\\|")) {
+            x = x.trim();
+            if (x.isEmpty()) continue;
+            if ((x.equals("m") || x.equals("km") || x.equals("분") || x.equals("시간")) && !t.isEmpty()
+                    && t.get(t.size() - 1).matches("[\\d.,]+")) { t.set(t.size() - 1, t.get(t.size() - 1) + x); continue; }
+            t.add(x);
+        }
+        int menu = -1, search = -1, ampm = -1;
+        for (int i = 0; i < t.size(); i++) {
+            String x = t.get(i);
+            if (menu < 0 && x.startsWith("[메뉴")) menu = i;
+            if (search < 0 && x.equals("[검색]")) search = i;
+            if (ampm < 0 && (x.equals("AM") || x.equals("PM") || x.equals("오전") || x.equals("오후"))) ampm = i;
+        }
+        if (menu < 0) return null;
+        String turnDist = "", turn = "";
+        for (int i = menu + 1; i < t.size(); i++) {
+            String x = t.get(i);
+            if (x.startsWith("[")) continue;
+            if (turnDist.isEmpty() && x.matches("[\\d.,]+k?m")) turnDist = x;
+            if (turn.isEmpty() && x.matches(".*(회전|유턴|U턴|직진|진입|출구|분기|방면|목적지|도착|경유).*")) turn = x;
+        }
+        if (turnDist.isEmpty() && turn.isEmpty()) return null;
+        java.util.List<String> info = new java.util.ArrayList<>();
+        int end = search > 0 ? search : menu;
+        for (int i = 0; i < end; i++) {
+            String x = t.get(i);
+            if (x.matches(".*(보호|카메라|단속|과속|신호|사고|공사|위험).*")) {
+                String a = x;
+                if (i + 1 < end && t.get(i + 1).matches("\\d+")) a += " " + t.get(i + 1);
+                if (i > 0 && t.get(i - 1).matches("[\\d.,]+k?m")) a += " (" + t.get(i - 1) + ")";
+                info.add(a);
+                break;
+            }
+        }
+        if (ampm > 0) info.add(t.get(ampm - 1));
+        for (int i = Math.max(ampm, 0); i < menu; i++) if (t.get(i).matches("\\d+(분|시간)")) { info.add(t.get(i)); break; }
+        for (int i = Math.max(ampm, 0); i < menu; i++) if (t.get(i).matches("[\\d.,]+km")) { info.add(t.get(i)); break; }
+        return new String[]{(turnDist + " " + turn).trim(), android.text.TextUtils.join(" · ", info)};
     }
 
     private void collectText(android.view.accessibility.AccessibilityNodeInfo n, StringBuilder sb, int depth) {
