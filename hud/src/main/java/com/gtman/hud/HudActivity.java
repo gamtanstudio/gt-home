@@ -74,7 +74,7 @@ public class HudActivity extends Activity {
     private int tickN = 0;   // 0 보통, 1 좌우, 2 상하
 
     private LocationManager lm;
-    private long lastFixAt = 0;
+    private long lastFixAt = 0, carSpeedAt = 0;
     private String callText = "";
     private TelephonyManager tm;
 
@@ -303,7 +303,8 @@ public class HudActivity extends Activity {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             clock.setText(new SimpleDateFormat("HH:mm", Locale.KOREA).format(new Date()));
-            if (System.currentTimeMillis() - lastFixAt > 4000) speed.setText("--");
+            long now = System.currentTimeMillis();
+            if (now - lastFixAt > 4000 && now - carSpeedAt > 4000) speed.setText("--");
             int hour = Integer.parseInt(new SimpleDateFormat("H", Locale.US).format(new Date()));
             stage.setAlpha(hour >= 19 || hour < 6 ? 0.6f : 1f);   // 밤에는 살짝 어둡게
             callBox.setVisibility(callText.isEmpty() ? View.GONE : View.VISIBLE);
@@ -425,6 +426,12 @@ public class HudActivity extends Activity {
             String s = d.optString("song", "");
             song.setText(s.isEmpty() ? "" : "♪ " + s);
             raw.setText(d.optString("raw", ""));
+            // 폰 GPS가 아직 못 잡았으면 차(올인원) 속도로 대신
+            int cs = d.optInt("speed", -1);
+            if (cs >= 0) {
+                carSpeedAt = System.currentTimeMillis();
+                if (System.currentTimeMillis() - lastFixAt > 4000) speed.setText(String.valueOf(cs < 3 ? 0 : cs));
+            }
             String carCall = d.optString("call", "");
             if (callText.isEmpty() && !carCall.isEmpty()) callText = carCall;   // 폰이 못 잡았으면 차 정보로
             String nav = (d.optString("navTitle", "") + " " + d.optString("navText", "")).trim();
