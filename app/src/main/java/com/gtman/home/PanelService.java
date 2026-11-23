@@ -1523,7 +1523,7 @@ public class PanelService extends AccessibilityService {
                 boolean callNow = System.currentTimeMillis() - MediaListener.callAt < 40000 && !MediaListener.callText.isEmpty();
                 j.put("call", callNow ? MediaListener.callText : "");
                 if (++navScanN % 2 == 0) navScreen = readNavScreen();
-                j.put("raw", navScreen);
+                j.put("raw", "");   // 확인판 끝 — 노란 글씨 안 보냄
                 hudJson = j.toString();
             } catch (Exception ignored) { }
             ui.postDelayed(this, 500);
