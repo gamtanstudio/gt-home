@@ -247,7 +247,10 @@ public class HudActivity extends Activity {
     }
 
     private void startSoloService() {
-        try { startForegroundService(new android.content.Intent(this, HudService.class)); } catch (Exception ignored) { }
+        try {
+            android.content.Intent i = new android.content.Intent(this, HudService.class);
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
+        } catch (Exception ignored) { }
     }
 
     /** 다른 앱 위에 표시(화면 자동 켜기용)·배터리 제한 해제 — 한 번만 물어봄 */

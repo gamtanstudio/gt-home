@@ -27,9 +27,15 @@ public class HudService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        nm.createNotificationChannel(new NotificationChannel("hud", "싼슬라 HUD", NotificationManager.IMPORTANCE_MIN));
-        Notification n = new Notification.Builder(this, "hud")
+        Notification.Builder nb;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            nm.createNotificationChannel(new NotificationChannel("hud", "싼슬라 HUD", NotificationManager.IMPORTANCE_MIN));
+            nb = new Notification.Builder(this, "hud");
+        } else {
+            nb = new Notification.Builder(this).setPriority(Notification.PRIORITY_MIN);
+        }
+        Notification n = nb
                 .setSmallIcon(R.drawable.ic_hud)
                 .setContentTitle("싼슬라 HUD 대기 중")
                 .setOngoing(true)
