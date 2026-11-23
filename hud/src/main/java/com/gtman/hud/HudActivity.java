@@ -70,7 +70,8 @@ public class HudActivity extends Activity {
     private volatile String carIp = null;
     private boolean everFound = false, searching = false;
     private long lostSince = 0;
-    private int mirror = 0;   // 0 보통, 1 좌우, 2 상하
+    private int mirror = 0;
+    private int tickN = 0;   // 0 보통, 1 좌우, 2 상하
 
     private LocationManager lm;
     private long lastFixAt = 0;
@@ -94,11 +95,13 @@ public class HudActivity extends Activity {
         askPermissions();
         startGps();
         startPhone();
+        if (solo()) { startSoloService(); }
+        applySolo();
         ui.post(tick);
         ui.post(carCheck);
     }
 
-    @Override protected void onResume() { super.onResume(); hideBars(); }
+    @Override protected void onResume() { super.onResume(); hideBars(); applySolo(); }
 
     @Override public void onWindowFocusChanged(boolean f) { super.onWindowFocusChanged(f); if (f) hideBars(); }
 
@@ -127,79 +130,87 @@ public class HudActivity extends Activity {
         stage = new FrameLayout(this);
         root.addView(stage, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER);
-        stage.addView(col, new FrameLayout.LayoutParams(-1, -1));
+        float dens = getResources().getDisplayMetrics().density;
+        int pw = getResources().getDisplayMetrics().widthPixels, ph = getResources().getDisplayMetrics().heightPixels;
+        int W = Math.max(pw, ph);                 // 가로로 눕혀 쓰니까 긴 쪽이 가로
+        float H = Math.min(pw, ph) / dens;        // 세로 높이(dp) 기준으로 글씨 크기
 
-        int h = getResources().getDisplayMetrics().heightPixels;
-        int w = getResources().getDisplayMetrics().widthPixels;
-        float base = Math.min(w, h) / getResources().getDisplayMetrics().density;   // dp
+        // 가운데 줄: [화살표·거리] [속도]
+        LinearLayout main = new LinearLayout(this);
+        main.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(-1, -1);
+        ml.bottomMargin = Math.round(H * 0.10f * dens);
+        stage.addView(main, ml);
 
         turnRow = new LinearLayout(this);
-        turnRow.setGravity(Gravity.CENTER_VERTICAL);
-        arrow = text(base * 0.20f, GREEN, true);
-        turnRow.addView(arrow);
-        LinearLayout tx = new LinearLayout(this);
-        tx.setOrientation(LinearLayout.VERTICAL);
-        tx.setPadding(dp(18), 0, 0, 0);
-        dist = text(base * 0.13f, GREEN, true);
-        road = text(base * 0.055f, Color.parseColor("#D8FFE6"), false);
+        turnRow.setOrientation(LinearLayout.VERTICAL);
+        turnRow.setGravity(Gravity.CENTER_HORIZONTAL);
+        LinearLayout ad = new LinearLayout(this);
+        ad.setGravity(Gravity.CENTER_VERTICAL);
+        arrow = text(H * 0.30f, GREEN, true);
+        arrow.setIncludeFontPadding(false);
+        dist = text(H * 0.20f, GREEN, true);
+        dist.setIncludeFontPadding(false);
+        dist.setPadding(dp(10), 0, 0, 0);
+        ad.addView(arrow);
+        ad.addView(dist);
+        turnRow.addView(ad);
+        road = text(H * 0.062f, Color.parseColor("#D8FFE6"), false);
         road.setSingleLine(true);
         road.setEllipsize(TextUtils.TruncateAt.END);
-        road.setMaxWidth(Math.round(w * 0.6f));
-        tx.addView(dist);
-        tx.addView(road);
-        turnRow.addView(tx);
-        turnRow.setVisibility(View.INVISIBLE);
-        col.addView(turnRow, new LinearLayout.LayoutParams(-2, -2));
+        road.setMaxWidth(Math.round(W * 0.45f));
+        turnRow.addView(road);
+        turnRow.setVisibility(View.GONE);
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
+        tl.rightMargin = Math.round(W * 0.06f);
+        main.addView(turnRow, tl);
 
         LinearLayout sp = new LinearLayout(this);
         sp.setGravity(Gravity.BOTTOM);
-        speed = text(base * 0.30f, Color.WHITE, true);
+        speed = text(H * 0.48f, Color.WHITE, true);
         speed.setText("--");
         speed.setIncludeFontPadding(false);
-        unit = text(base * 0.06f, DIM, true);
-        unit.setText("  km/h");
-        unit.setPadding(0, 0, 0, dp(10));
+        unit = text(H * 0.07f, DIM, true);
+        unit.setText(" km/h");
+        unit.setPadding(0, 0, 0, Math.round(H * 0.05f * dens));
         sp.addView(speed);
         sp.addView(unit);
-        col.addView(sp, new LinearLayout.LayoutParams(-2, -2));
+        main.addView(sp, new LinearLayout.LayoutParams(-2, -2));
 
+        // 아래 줄: 시계 · 곡명
         LinearLayout bot = new LinearLayout(this);
         bot.setGravity(Gravity.CENTER);
-        clock = text(base * 0.05f, DIM, false);
-        song = text(base * 0.05f, DIM, false);
+        clock = text(H * 0.07f, DIM, false);
+        song = text(H * 0.07f, DIM, false);
         song.setSingleLine(true);
         song.setEllipsize(TextUtils.TruncateAt.END);
-        song.setMaxWidth(Math.round(w * 0.6f));
+        song.setMaxWidth(Math.round(W * 0.6f));
         song.setPadding(dp(28), 0, 0, 0);
         bot.addView(clock);
         bot.addView(song);
-        LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(-2, -2);
-        bl.topMargin = dp(8);
-        col.addView(bot, bl);
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        bl.bottomMargin = dp(14);
+        stage.addView(bot, bl);
 
         callBox = new LinearLayout(this);
         callBox.setGravity(Gravity.CENTER);
-        callBox.setPadding(dp(28), dp(14), dp(28), dp(14));
+        callBox.setPadding(dp(32), dp(16), dp(32), dp(16));
         android.graphics.drawable.GradientDrawable cb = new android.graphics.drawable.GradientDrawable();
         cb.setColor(Color.parseColor("#0F3D23"));
         cb.setStroke(dp(3), GREEN);
-        cb.setCornerRadius(dp(40));
+        cb.setCornerRadius(dp(48));
         callBox.setBackground(cb);
-        callName = text(base * 0.09f, Color.WHITE, true);
+        callName = text(H * 0.11f, Color.WHITE, true);
         callName.setSingleLine(true);
         callName.setEllipsize(TextUtils.TruncateAt.END);
-        callName.setMaxWidth(Math.round(w * 0.85f));
+        callName.setMaxWidth(Math.round(W * 0.85f));
         callBox.addView(callName);
         callBox.setVisibility(View.GONE);
         FrameLayout.LayoutParams cl = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        cl.topMargin = dp(16);
+        cl.topMargin = dp(12);
         stage.addView(callBox, cl);
 
-        // 확인판: 차가 네이버 지도 화면에서 읽은 글자 (안내 맞추기용, 나중에 뺌)
-        raw = text(11, Color.parseColor("#C9A227"), false);
+        raw = text(11, Color.parseColor("#C9A227"), false);   // 확인용 (차가 안 보내면 빈칸)
         raw.setMaxLines(9);
         raw.setEllipsize(TextUtils.TruncateAt.END);
         FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
@@ -211,9 +222,65 @@ public class HudActivity extends Activity {
         sl.setMargins(0, 0, dp(14), dp(10));
         root.addView(status, sl);
 
-        // 누르면 보통 → 좌우 뒤집기 → 상하 뒤집기
+        // 누르면 보통 → 좌우 뒤집기 → 상하 뒤집기 / 길게 누르면 전용 HUD폰 모드 켜기·끄기
         root.setOnClickListener(v -> { mirror = (mirror + 1) % 3; prefs().edit().putInt("mirror", mirror).apply(); applyMirror(); });
+        root.setOnLongClickListener(v -> { toggleSolo(); return true; });
         setContentView(root);
+    }
+
+    // ------------------------------------------------------------------
+    // 전용 HUD폰 모드 (대시보드 위에 두는 중국폰용)
+    // ------------------------------------------------------------------
+    private boolean solo() { return prefs().getBoolean("solo", false); }
+
+    private void toggleSolo() {
+        boolean on = !solo();
+        prefs().edit().putBoolean("solo", on).apply();
+        android.widget.Toast.makeText(this, on ? "전용 HUD폰 모드 켬" : "전용 HUD폰 모드 끔", android.widget.Toast.LENGTH_SHORT).show();
+        if (on) {
+            startSoloService();
+            askSoloPermissions();
+        } else {
+            stopService(new android.content.Intent(this, HudService.class));
+        }
+        applySolo();
+    }
+
+    private void startSoloService() {
+        try { startForegroundService(new android.content.Intent(this, HudService.class)); } catch (Exception ignored) { }
+    }
+
+    /** 다른 앱 위에 표시(화면 자동 켜기용)·배터리 제한 해제 — 한 번만 물어봄 */
+    private void askSoloPermissions() {
+        try {
+            if (!android.provider.Settings.canDrawOverlays(this)) {
+                startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+                return;
+            }
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName()))
+                startActivity(new android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + getPackageName())));
+        } catch (Exception ignored) { }
+    }
+
+    private boolean charging() {
+        try {
+            android.content.Intent b = registerReceiver(null, new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+            int plug = b == null ? 0 : b.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0);
+            return plug != 0;
+        } catch (Exception e) { return false; }
+    }
+
+    /** 전용 모드: 충전 중일 때만 화면 켜 두기, 밝기 최대 */
+    private void applySolo() {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        boolean s = solo();
+        lp.screenBrightness = s ? 1f : WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+        getWindow().setAttributes(lp);
+        if (!s || charging()) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     private TextView text(float sp, int color, boolean bold) {
@@ -238,6 +305,7 @@ public class HudActivity extends Activity {
             stage.setAlpha(hour >= 19 || hour < 6 ? 0.6f : 1f);   // 밤에는 살짝 어둡게
             callBox.setVisibility(callText.isEmpty() ? View.GONE : View.VISIBLE);
             callName.setText("📞  " + callText);
+            if (++tickN % 10 == 0 && solo()) applySolo();
             ui.postDelayed(this, 200);
         }
     };
@@ -328,8 +396,8 @@ public class HudActivity extends Activity {
             if (ip == null) {
                 if (!searching) search();
                 status.setText("싼슬라 찾는 중");
-                if (everFound && lostSince != 0 && System.currentTimeMillis() - lostSince > 60000) { finish(); return; }
-                ui.postDelayed(this, 1500);
+                if (everFound && lostSince != 0 && System.currentTimeMillis() - lostSince > 60000 && !solo()) { finish(); return; }
+                ui.postDelayed(this, solo() && !charging() ? 20000 : 1500);   // 전용폰이 시동 꺼진 채면 천천히 찾기
                 return;
             }
             net.execute(() -> {
@@ -359,7 +427,7 @@ public class HudActivity extends Activity {
             String nav = (d.optString("navTitle", "") + " " + d.optString("navText", "")).trim();
             Matcher m = DIST.matcher(nav);
             boolean real = m.find() || nav.matches(".*(회전|유턴|U턴|목적지|도착|진입|출구).*");
-            if (!real) { turnRow.setVisibility(View.INVISIBLE); return; }   // 안내 내용 없으면 숨김
+            if (!real) { turnRow.setVisibility(View.GONE); return; }   // 안내 내용 없으면 숨김
             m.reset();
             String ds = "", rest = nav;
             if (m.find()) { ds = m.group(1) + m.group(2); rest = (nav.substring(0, m.start()) + nav.substring(m.end())).trim(); }
