@@ -1553,12 +1553,21 @@ public class PanelService extends AccessibilityService {
     static String[] parseNavScreen(String raw) {
         if (raw == null || raw.isEmpty()) return null;
         java.util.List<String> t = new java.util.ArrayList<>();
+        java.util.List<Integer> hs = new java.util.ArrayList<>();
         for (String x : raw.split("\\|")) {
             x = x.trim();
+            int h = 0, k = x.lastIndexOf('§');
+            if (k >= 0) { try { h = Integer.parseInt(x.substring(k + 1)); } catch (Exception ignored) { } x = x.substring(0, k).trim(); }
             if (x.isEmpty()) continue;
             if ((x.equals("m") || x.equals("km") || x.equals("분") || x.equals("시간")) && !t.isEmpty()
-                    && t.get(t.size() - 1).matches("[\\d.,]+")) { t.set(t.size() - 1, t.get(t.size() - 1) + x); continue; }
+                    && t.get(t.size() - 1).matches("[\\d.,]+")) {
+                int last = t.size() - 1;
+                t.set(last, t.get(last) + x);
+                hs.set(last, Math.max(hs.get(last), h));
+                continue;
+            }
             t.add(x);
+            hs.add(h);
         }
         int menu = -1, search = -1, ampm = -1;
         for (int i = 0; i < t.size(); i++) {
@@ -1568,13 +1577,20 @@ public class PanelService extends AccessibilityService {
             if (ampm < 0 && (x.equals("AM") || x.equals("PM") || x.equals("오전") || x.equals("오후"))) ampm = i;
         }
         if (menu < 0) return null;
-        String turnDist = "", turn = "";
+        // 지금 안내 = 메뉴 버튼 뒤에서 글씨가 제일 큰 거리 (작은 건 그다음 안내)
+        String turnDist = "", turn = "", name = "";
+        int di = -1, dh = -1, th = -1;
         for (int i = menu + 1; i < t.size(); i++) {
             String x = t.get(i);
             if (x.startsWith("[")) continue;
-            if (turnDist.isEmpty() && x.matches("[\\d.,]+k?m")) turnDist = x;
-            if (turn.isEmpty() && x.matches(".*(회전|유턴|U턴|직진|진입|출구|분기|방면|목적지|도착|경유).*")) turn = x;
+            if (x.matches("[\\d.,]+k?m") && hs.get(i) > dh) { dh = hs.get(i); di = i; turnDist = x; }
+            if (x.matches(".*(회전|유턴|U턴|직진|진입|출구|분기|방면|목적지|도착|경유).*") && hs.get(i) > th) { th = hs.get(i); turn = x; }
         }
+        if (di > 0 && di + 1 < t.size()) {
+            String x = t.get(di + 1);
+            if (!x.startsWith("[") && !x.matches("[\\d.,:]+.*") && !x.equals(turn) && hs.get(di + 1) * 3 >= dh) name = x;
+        }
+        if (!name.isEmpty()) turn = (turn + " " + name).trim();
         if (turnDist.isEmpty() && turn.isEmpty()) return null;
         java.util.List<String> info = new java.util.ArrayList<>();
         int end = search > 0 ? search : menu;
@@ -1595,15 +1611,18 @@ public class PanelService extends AccessibilityService {
     }
 
     private void collectText(android.view.accessibility.AccessibilityNodeInfo n, StringBuilder sb, int depth) {
-        if (n == null || depth > 40 || sb.length() > 900) return;
+        if (n == null || depth > 40 || sb.length() > 1400) return;
         if (n.isVisibleToUser()) {
             CharSequence t = n.getText(), d = n.getContentDescription();
             String id = n.getViewIdResourceName();
             if (id != null) id = id.substring(id.indexOf('/') + 1);
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            String h = "§" + r.height();   // 글자 칸 높이 — 큰 글씨가 지금 안내
             if (t != null && t.toString().trim().length() > 0)
-                sb.append(id != null ? id + ":" : "").append(t.toString().trim()).append(" | ");
+                sb.append(id != null ? id + ":" : "").append(t.toString().trim()).append(h).append(" | ");
             else if (d != null && d.toString().trim().length() > 0)
-                sb.append(id != null ? id + ":" : "").append("[").append(d.toString().trim()).append("] | ");
+                sb.append(id != null ? id + ":" : "").append("[").append(d.toString().trim()).append("]").append(h).append(" | ");
         }
         for (int i = 0; i < n.getChildCount(); i++) collectText(n.getChild(i), sb, depth + 1);
     }
