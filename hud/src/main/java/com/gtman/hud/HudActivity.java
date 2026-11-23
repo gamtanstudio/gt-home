@@ -147,18 +147,18 @@ public class HudActivity extends Activity {
         turnRow.setGravity(Gravity.CENTER_HORIZONTAL);
         LinearLayout ad = new LinearLayout(this);
         ad.setGravity(Gravity.CENTER_VERTICAL);
-        arrow = text(H * 0.30f, GREEN, true);
+        arrow = text(H * 0.26f, GREEN, true);
         arrow.setIncludeFontPadding(false);
-        dist = text(H * 0.20f, GREEN, true);
+        dist = text(H * 0.17f, GREEN, true);
         dist.setIncludeFontPadding(false);
         dist.setPadding(dp(10), 0, 0, 0);
         ad.addView(arrow);
         ad.addView(dist);
         turnRow.addView(ad);
-        road = text(H * 0.062f, Color.parseColor("#D8FFE6"), false);
+        road = text(H * 0.095f, Color.parseColor("#D8FFE6"), false);
         road.setSingleLine(true);
         road.setEllipsize(TextUtils.TruncateAt.END);
-        road.setMaxWidth(Math.round(W * 0.45f));
+        road.setMaxWidth(Math.round(W * 0.50f));
         turnRow.addView(road);
         turnRow.setVisibility(View.GONE);
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(-2, -2);
@@ -167,7 +167,7 @@ public class HudActivity extends Activity {
 
         LinearLayout sp = new LinearLayout(this);
         sp.setGravity(Gravity.BOTTOM);
-        speed = text(H * 0.48f, Color.WHITE, true);
+        speed = text(H * 0.42f, Color.WHITE, true);
         speed.setText("--");
         speed.setIncludeFontPadding(false);
         unit = text(H * 0.07f, DIM, true);
@@ -180,8 +180,8 @@ public class HudActivity extends Activity {
         // 아래 줄: 시계 · 곡명
         LinearLayout bot = new LinearLayout(this);
         bot.setGravity(Gravity.CENTER);
-        clock = text(H * 0.07f, DIM, false);
-        song = text(H * 0.07f, DIM, false);
+        clock = text(H * 0.095f, DIM, false);
+        song = text(H * 0.095f, DIM, false);
         song.setSingleLine(true);
         song.setEllipsize(TextUtils.TruncateAt.END);
         song.setMaxWidth(Math.round(W * 0.6f));
@@ -442,7 +442,7 @@ public class HudActivity extends Activity {
             String ds = "", rest = nav;
             if (m.find()) { ds = m.group(1) + m.group(2); rest = (nav.substring(0, m.start()) + nav.substring(m.end())).trim(); }
             dist.setText(ds);
-            road.setText(rest);
+            road.setText(rest.replaceAll("(좌회전|우회전|유턴|U턴|직진)\\s*", "").trim());   // 화살표랑 겹치는 말은 빼기
             arrow.setText(arrowFor(nav));
             turnRow.setVisibility(View.VISIBLE);
         } catch (Exception ignored) { }
